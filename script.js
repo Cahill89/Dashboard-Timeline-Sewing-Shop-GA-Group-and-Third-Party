@@ -1,18 +1,71 @@
-const DATA = JSON.parse(document.getElementById("dashboard-data").textContent);
+// ======================================================================
+// FIREBASE / CLOUD SYNC
+// Config Firebase diambil dari window.FIREBASE_CONFIG (lihat firebase-config.js).
+// Isi firebase-config.js dengan config project Firebase Anda sendiri.
+// ======================================================================
+firebase.initializeApp(window.FIREBASE_CONFIG);
+const db = firebase.firestore();
+// Semua perubahan (kalender, job order, lembur, header) disimpan sebagai SATU dokumen
+// di collection "dashboards", document "seatCoverGA". Ganti nama ini jika Anda ingin
+// menjalankan beberapa dashboard terpisah dari project Firebase yang sama.
+const CLOUD_DOC = db.collection("dashboards").doc("seatCoverGA");
 
-// -------- local browser storage (menyimpan seluruh perubahan: kalender, lembur, job order, pengaturan jam) --------
-const STORAGE_KEY = "gmfSeatCoverDashboardData_v1";
-let __loadedFromStorage = false;
-(function tryLoadStorage(){
+const STORAGE_KEY = "gmfSeatCoverDashboardData_v1"; // cadangan/offline cache di browser ini
+const AUTH_KEY = "gmfSeatCoverAuthUser";
+
+function currentUser(){ return localStorage.getItem(AUTH_KEY) || null; }
+
+function loadLocalCache(){
   try{
     const raw = localStorage.getItem(STORAGE_KEY);
-    if(raw){
-      const saved = JSON.parse(raw);
-      Object.assign(DATA, saved);
-      __loadedFromStorage = true;
+    return raw ? JSON.parse(raw) : null;
+  }catch(e){ return null; }
+}
+function saveLocalCache(dataObj){
+  try{
+    const clone = JSON.parse(JSON.stringify(dataObj));
+    delete clone.__planMap;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(clone));
+    return true;
+  }catch(e){ return false; }
+}
+function clearSavedData(){
+  try{ localStorage.removeItem(STORAGE_KEY); return true; }catch(e){ return false; }
+}
+
+async function loadCloudData(){
+  try{
+    const snap = await CLOUD_DOC.get();
+    if(snap.exists && snap.data() && snap.data().payload){
+      return JSON.parse(snap.data().payload);
     }
-  }catch(e){ /* data tersimpan rusak/tidak terbaca, abaikan & pakai data bawaan */ }
-})();
+  }catch(e){ console.error("Gagal memuat data dari Firestore, akan coba cadangan lokal:", e); }
+  return null;
+}
+
+async function saveDataToCloud(dataObj){
+  try{
+    const clone = JSON.parse(JSON.stringify(dataObj));
+    delete clone.__planMap;
+    await CLOUD_DOC.set({
+      payload: JSON.stringify(clone),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedBy: currentUser() || "unknown"
+    });
+    saveLocalCache(dataObj); // simpan juga cadangan lokal untuk mode offline
+    return true;
+  }catch(e){
+    console.error("Gagal menyimpan ke Firestore:", e);
+    saveLocalCache(dataObj); // tetap simpan lokal biar perubahan tidak hilang total
+    return false;
+  }
+}
+
+// ======================================================================
+// SELURUH LOGIKA DASHBOARD (dibungkus dalam satu fungsi supaya bisa dijalankan
+// SETELAH data awal berhasil diambil dari cloud/cache/bawaan)
+// ======================================================================
+function initDashboardApp(DATA, __dataSource){
 
 // -------- pengaturan header (logo & judul) — default sesuai tampilan awal, bisa diedit admin login --------
 if(!DATA.header_settings){
@@ -48,23 +101,9 @@ DATA.calendar_products.forEach(p=>{
   p.days = migrated;
 });
 
-function saveDataToStorage(){
-  try{
-    const clone = JSON.parse(JSON.stringify(DATA));
-    delete clone.__planMap;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(clone));
-    return true;
-  }catch(e){ return false; }
-}
-function clearSavedData(){
-  try{ localStorage.removeItem(STORAGE_KEY); return true; }catch(e){ return false; }
-}
-
 // -------- login (hanya akun terdaftar yang bisa mengubah data) --------
 // Ganti/tambah akun di sini sesuai kebutuhan tim:
-const AUTH_USERS = { "admin": "admin123", "supervisor": "gmf2026" };
-const AUTH_KEY = "gmfSeatCoverAuthUser";
-function currentUser(){ return localStorage.getItem(AUTH_KEY) || null; }
+const AUTH_USERS = { "GMFPMA": "PM@A3ro4s!@!" };
 function isLoggedIn(){ return !!currentUser(); }
 function requireLogin(){
   if(isLoggedIn()) return true;
@@ -1985,38 +2024,34 @@ rekapStats(filteredTotals);
 renderRekapTable();
 
 // -------- simpan/hapus data tersimpan (Rekap Harian) --------
-function formatSavedNote(){
-  try{
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if(!raw) return "Belum ada perubahan yang disimpan di browser ini.";
-    const now = new Date();
-    return "Tersimpan terakhir di browser ini &middot; " + now.toLocaleDateString("id-ID") ;
-  }catch(e){ return ""; }
-}
 // Semua tombol "Simpan perubahan" (Rekap, Timeline, Distribusi Pengerjaan) memakai
 // satu fungsi & satu key localStorage yang sama, sehingga menyimpan dari tab manapun
 // otomatis mencakup seluruh data: kalender/timeline, job order baru, lembur & jam kerja.
 const SAVE_STATUS_IDS = ["rekapSaveStatus", "timelineSaveStatus", "distribusiSaveStatus"];
 function initialSaveStatusText(){
-  return __loadedFromStorage
-    ? "Menampilkan data tersimpan dari perubahan sebelumnya di browser ini."
-    : "Menampilkan data bawaan (belum ada perubahan tersimpan di browser ini).";
+  if(__dataSource === "cloud") return "Menampilkan data terbaru dari cloud (Firestore) &middot; sinkron untuk semua orang.";
+  if(__dataSource === "local") return "Firestore tidak terjangkau &middot; menampilkan cadangan tersimpan di browser ini.";
+  return "Menampilkan data bawaan (belum ada perubahan tersimpan di cloud).";
 }
 SAVE_STATUS_IDS.forEach(id=>{
   const el = document.getElementById(id);
   if(el) el.innerHTML = initialSaveStatusText();
 });
-function performSave(){
+async function performSave(){
   if(!requireLogin()) return;
-  const ok = saveDataToStorage();
+  SAVE_STATUS_IDS.forEach(id=>{
+    const el = document.getElementById(id);
+    if(el) el.innerHTML = `<span style="color:var(--text-muted)">&#8987; Menyimpan ke cloud...</span>`;
+  });
+  const ok = await saveDataToCloud(DATA);
   SAVE_STATUS_IDS.forEach(id=>{
     const el = document.getElementById(id);
     if(!el) return;
     if(ok){
       const now = new Date();
-      el.innerHTML = `<span style="color:var(--green)">&#10003; Tersimpan pukul ${now.toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"})}</span> &middot; mencakup kalender/timeline, lembur, job order &amp; pengaturan jam kerja.`;
+      el.innerHTML = `<span style="color:var(--green)">&#10003; Tersimpan ke cloud pukul ${now.toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"})}</span> &middot; mencakup kalender/timeline, lembur, job order &amp; pengaturan jam kerja. Semua orang yang buka link ini akan melihat versi terbaru.`;
     } else {
-      el.innerHTML = `<span style="color:var(--danger)">Gagal menyimpan (penyimpanan browser penuh/diblokir).</span>`;
+      el.innerHTML = `<span style="color:var(--danger)">Gagal menyimpan ke cloud (cek koneksi internet / config Firebase). Perubahan dicadangkan di browser ini saja.</span>`;
     }
   });
 }
@@ -2024,11 +2059,39 @@ function performSave(){
   const btn = document.getElementById(id);
   if(btn) btn.addEventListener("click", performSave);
 });
-document.getElementById("resetSavedBtn").addEventListener("click", ()=>{
+document.getElementById("resetSavedBtn").addEventListener("click", async ()=>{
   if(!requireLogin()) return;
-  if(!confirm("Hapus semua perubahan tersimpan di browser ini dan muat ulang data bawaan?")) return;
+  if(!confirm("PERHATIAN: ini akan menghapus data tersimpan di CLOUD (berlaku untuk SEMUA orang yang membuka dashboard ini), lalu memuat ulang data bawaan. Lanjutkan?")) return;
   clearSavedData();
+  try{ await CLOUD_DOC.delete(); }catch(e){ console.error("Gagal menghapus data cloud:", e); }
   location.reload();
 });
 
 applyAuthUI();
+
+} // ==== end of initDashboardApp ====
+
+// ======================================================================
+// BOOTSTRAP: tentukan sumber data awal lalu jalankan dashboard.
+// Urutan prioritas: 1) Firestore (cloud, dipakai bersama semua orang)
+//                   2) cadangan lokal di browser ini (kalau Firestore gagal diakses)
+//                   3) data bawaan yang ditanam di index.html
+// ======================================================================
+(async function bootstrap(){
+  const loadingEl = document.getElementById("cloudLoadingOverlay");
+  const DATA = JSON.parse(document.getElementById("dashboard-data").textContent);
+  let dataSource = "bawaan";
+  const cloud = await loadCloudData();
+  if(cloud){
+    Object.assign(DATA, cloud);
+    dataSource = "cloud";
+  } else {
+    const local = loadLocalCache();
+    if(local){
+      Object.assign(DATA, local);
+      dataSource = "local";
+    }
+  }
+  initDashboardApp(DATA, dataSource);
+  if(loadingEl) loadingEl.remove();
+})();

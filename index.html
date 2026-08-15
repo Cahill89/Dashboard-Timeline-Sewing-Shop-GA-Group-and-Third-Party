@@ -9,8 +9,18 @@
 <link rel="stylesheet" href="style.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<!-- Firebase (compat SDK) untuk penyimpanan cloud -->
+<script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore-compat.js"></script>
+<script src="firebase-config.js"></script>
+<style>
+  #cloudLoadingOverlay{position:fixed;inset:0;background:#0b0f14;color:#e6edf3;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:10px;z-index:9999;font-family:'IBM Plex Mono',monospace;font-size:13px;}
+  #cloudLoadingOverlay .spinner{width:26px;height:26px;border:3px solid #2a3542;border-top-color:#3DDC84;border-radius:50%;animation:cloudspin .8s linear infinite;}
+  @keyframes cloudspin{to{transform:rotate(360deg);}}
+</style>
 </head>
 <body>
+<div id="cloudLoadingOverlay"><div class="spinner"></div><div>Memuat data dari cloud&hellip;</div></div>
 
 <header>
   <div class="title-block">
