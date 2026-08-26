@@ -105,6 +105,7 @@ table.cal td.month-end, table.cal th.month-end{border-right:2px solid rgba(255,2
 table.cal td.daycell:not(.empty):not(.weekend):hover{transform:scale(1.22);filter:brightness(1.18);position:relative;z-index:5;box-shadow:0 3px 12px rgba(0,0,0,0.5);}
 table.cal td.weekend{background:repeating-linear-gradient(135deg, rgba(229,72,77,0.55) 0px, rgba(229,72,77,0.55) 5px, rgba(229,72,77,0.35) 5px, rgba(229,72,77,0.35) 10px);border-radius:5px;}
 table.cal th.weekend-h{background:linear-gradient(180deg,#E5484D,#B8383D);color:#fff;font-weight:700;}
+table.cal th.holiday-h{background:linear-gradient(180deg,#F5A623,#C9820F);color:#fff;font-weight:700;}
 table.cal td.empty{background:#E4EAF2;border-radius:5px;}
 table.cal tr:hover td.desc{background:var(--bg-panel-alt);}
 table.cal td.editable-cell{cursor:pointer;}
@@ -533,6 +534,21 @@ window.FIREBASE_CONFIG = {
           <span id="absensiStatus" class="mono" style="font-size:11px;color:var(--text-muted);">Belum ada file diimpor.</span>
         </div>
       </details>
+      <details style="margin:6px 0 0;">
+        <summary class="mono" style="font-size:11px;color:var(--amber);cursor:pointer;">&#128197; Kelola hari libur nasional / cuti bersama</summary>
+        <p style="font-size:11.5px;color:var(--text-secondary);max-width:640px;line-height:1.6;margin:8px 0;">Tanggal di daftar ini otomatis ditandai <b>Libur</b> (abu-abu) di grid Kehadiran &amp; diberi warna amber di header Kalender Timeline &mdash; sudah diisi sesuai SKB 3 Menteri 2026, tapi Anda bisa tambah/hapus sendiri (mis. cuti bersama internal perusahaan).</p>
+        <div class="table-wrap" style="max-height:220px;overflow-y:auto;">
+          <table class="data-table">
+            <thead><tr><th style="width:120px;">Tanggal</th><th>Nama libur</th><th style="width:40px;"></th></tr></thead>
+            <tbody id="holidayListBody"></tbody>
+          </table>
+        </div>
+        <div class="controls" style="margin-top:8px;">
+          <input type="date" id="newHolidayDate" class="att-input" style="width:150px;">
+          <input type="text" id="newHolidayName" class="att-input" placeholder="Nama hari libur" style="flex:1;min-width:160px;">
+          <button class="btn" id="addHolidayBtn" style="border-color:var(--amber);color:var(--amber);">+ Tambah</button>
+        </div>
+      </details>
     </div>
 
     <div class="panel full-bleed" id="kehadiranListPanel">
@@ -647,6 +663,44 @@ async function saveDataToCloud(dataObj){
 // SETELAH data awal berhasil diambil dari cloud/cache/bawaan)
 // ======================================================================
 function initDashboardApp(DATA, __dataSource){
+
+// ======================================================================
+// KALENDER HARI LIBUR — diinisialisasi paling awal supaya tersedia untuk Kalender Timeline,
+// Kehadiran Karyawan, dan Rekap Harian sejak render pertama kali.
+// Disimpan di DATA.holidays supaya ikut ke Firestore lewat tombol Simpan perubahan (sinkron semua orang).
+// Diseed dari SKB 3 Menteri No. 1497/2/5 Tahun 2025 tentang Libur Nasional & Cuti Bersama 2026
+// (17 libur nasional + 8 cuti bersama). Bisa ditambah/dihapus sendiri lewat tab Kehadiran Karyawan.
+// ======================================================================
+if(!Array.isArray(DATA.holidays)){
+  DATA.holidays = [
+    {date:"2026-01-01", name:"Tahun Baru 2026 Masehi"},
+    {date:"2026-01-16", name:"Isra Mikraj Nabi Muhammad SAW"},
+    {date:"2026-02-16", name:"Cuti Bersama Imlek"},
+    {date:"2026-02-17", name:"Tahun Baru Imlek 2577 Kongzili"},
+    {date:"2026-03-18", name:"Cuti Bersama Hari Suci Nyepi"},
+    {date:"2026-03-19", name:"Hari Suci Nyepi (Tahun Baru Saka 1948)"},
+    {date:"2026-03-20", name:"Cuti Bersama Idulfitri"},
+    {date:"2026-03-21", name:"Idulfitri 1447 H (Hari Pertama)"},
+    {date:"2026-03-22", name:"Idulfitri 1447 H (Hari Kedua)"},
+    {date:"2026-03-23", name:"Cuti Bersama Idulfitri"},
+    {date:"2026-03-24", name:"Cuti Bersama Idulfitri"},
+    {date:"2026-04-03", name:"Wafat Yesus Kristus"},
+    {date:"2026-04-05", name:"Kebangkitan Yesus Kristus (Paskah)"},
+    {date:"2026-05-01", name:"Hari Buruh Internasional"},
+    {date:"2026-05-14", name:"Kenaikan Yesus Kristus"},
+    {date:"2026-05-15", name:"Cuti Bersama Kenaikan Yesus Kristus"},
+    {date:"2026-05-27", name:"Iduladha 1447 H"},
+    {date:"2026-05-28", name:"Cuti Bersama Iduladha"},
+    {date:"2026-05-31", name:"Hari Raya Waisak 2570 BE"},
+    {date:"2026-06-01", name:"Hari Lahir Pancasila"},
+    {date:"2026-06-16", name:"1 Muharam Tahun Baru Islam 1448 H"},
+    {date:"2026-08-17", name:"Proklamasi Kemerdekaan RI"},
+    {date:"2026-08-25", name:"Maulid Nabi Muhammad SAW"},
+    {date:"2026-12-24", name:"Cuti Bersama Natal"},
+    {date:"2026-12-25", name:"Kelahiran Yesus Kristus (Natal)"}
+  ];
+}
+function isHoliday(iso){ return (DATA.holidays||[]).find(h=>h.date===iso) || null; }
 
 // -------- pengaturan header (logo & judul) — default sesuai tampilan awal, bisa diedit admin login --------
 if(!DATA.header_settings){
@@ -1705,10 +1759,18 @@ function renderCalendarMonth(){
   monthDays.forEach(dt=>{
     const iso = fmt(dt);
     const overCap = (__dailyTotalByIso[iso]||0) > __cap;
-    thead += `<th class="${isWeekend(dt)?'weekend-h':''}" style="${overCap?'box-shadow:inset 0 -4px 0 var(--amber);':''}" title="${overCap?`Job order minta total ${__dailyTotalByIso[iso]} org-hari, dikerjakan parsial oleh ${__cap} orang tetap`:''}">${dt.getDate()}</th>`;
+    const hol = isHoliday(iso);
+    const cls = hol ? "holiday-h" : (isWeekend(dt)?"weekend-h":"");
+    const tip = overCap ? `Job order minta total ${__dailyTotalByIso[iso]} org-hari, dikerjakan parsial oleh ${__cap} orang tetap` : (hol ? hol.name : "");
+    thead += `<th class="${cls}" style="${overCap?'box-shadow:inset 0 -4px 0 var(--amber);':''}" title="${tip}">${dt.getDate()}</th>`;
   });
   thead += "</tr><tr>";
-  monthDays.forEach(dt=> thead += `<th class="${isWeekend(dt)?'weekend-h':''}" style="${isWeekend(dt)?'':'color:#5AC8FA'}">${WD_ID[dt.getDay()]}</th>`);
+  monthDays.forEach(dt=>{
+    const iso = fmt(dt);
+    const hol = isHoliday(iso);
+    const cls = hol ? "holiday-h" : (isWeekend(dt)?"weekend-h":"");
+    thead += `<th class="${cls}" style="${cls?'':'color:#5AC8FA'}" title="${hol?hol.name:''}">${WD_ID[dt.getDay()]}</th>`;
+  });
   thead += "</tr></thead>";
 
   let tbody = "<tbody>";
@@ -2402,8 +2464,8 @@ document.getElementById("timelineFile").addEventListener("change", (e)=>{
 });
 
 
-const STATUS_CODE_COLOR = { H:"#3DDC84", I:"#F5A623", S:"#5AC8FA", A:"#E5484D", T:"#8B7FD6", L:"#FF6B4A" };
-const STATUS_CODE_LABEL = { H:"Hadir", I:"Izin", S:"Sakit", A:"Alpa", T:"Training", L:"Lembur" };
+const STATUS_CODE_COLOR = { H:"#3DDC84", I:"#F5A623", S:"#5AC8FA", A:"#E5484D", T:"#8B7FD6", L:"#FF6B4A", R:"#8FA0B3" };
+const STATUS_CODE_LABEL = { H:"Hadir", I:"Izin", S:"Sakit", A:"Alpa", T:"Training", L:"Lembur", R:"Libur" };
 // Warna & label untuk kode huruf lain yang muncul di file jam lembur (mis. S, T, dst.)
 // dipilih otomatis dari palet ini kalau belum ada di STATUS_CODE_COLOR.
 const EXTRA_CODE_PALETE = ["#8B7FD6","#E85D75","#9BD16A","#D6A15E","#4FD1C5","#5AC8FA"];
@@ -2414,15 +2476,19 @@ const EXTRA_CODE_PALETE = ["#8B7FD6","#E85D75","#9BD16A","#D6A15E","#4FD1C5","#5
 // yang sama seperti tab lain), TIDAK wajib upload file setiap kali dibuka.
 // ======================================================================
 // Header grid 2-baris (nomor tanggal + nama hari), dipakai grid kehadiran di bawah.
-function gridHeaderHTML(ndays, weekdayLabels, leadLabel, tailLabel){
+// Sel tanggal yang jatuh di hari libur nasional/cuti bersama diwarnai amber, beda dari akhir pekan (merah).
+function gridHeaderHTML(ndays, weekdayLabels, leadLabel, tailLabel, y, m){
   const rowspan = weekdayLabels ? 2 : 1;
   let row1 = `<tr><th class='desc' rowspan='${rowspan}'>${leadLabel||"Nama"}</th>`;
   let row2 = "<tr>";
   for(let d=1; d<=ndays; d++){
     const wd = weekdayLabels ? weekdayLabels[d-1] : null;
     const isWeekend = wd && /^(sab|min)/i.test(wd);
-    row1 += `<th${isWeekend?" class='weekend-h'":""}>${d}</th>`;
-    if(weekdayLabels) row2 += `<th${isWeekend?" class='weekend-h'":""}>${wd||""}</th>`;
+    const hol = (y && m) ? isHoliday(attIso(y,m,d)) : null;
+    const cls = hol ? "holiday-h" : (isWeekend ? "weekend-h" : "");
+    const tip = hol ? ` title="${hol.name}"` : "";
+    row1 += `<th${cls?` class='${cls}'`:""}${tip}>${d}</th>`;
+    if(weekdayLabels) row2 += `<th${cls?` class='${cls}'`:""}${tip}>${wd||""}</th>`;
   }
   if(tailLabel) row1 += `<th rowspan='${rowspan}'>${tailLabel}</th>`;
   row1 += "</tr>";
@@ -2461,11 +2527,13 @@ function attWeekdayLabelsFor(y,m,nd){
 function attIso(y,m,d){ return `${y}-${String(m).padStart(2,"0")}-${String(d).padStart(2,"0")}`; }
 function attIsWeekend(y,m,d){ const g = new Date(y,m-1,d).getDay(); return g===0 || g===6; }
 // Kode efektif suatu tanggal: kalau sudah diisi manual, pakai itu. Kalau belum diisi:
-// hari kerja (Sen-Jum) dianggap default Hadir, akhir pekan (Sab-Min) dianggap Libur (tidak dihitung).
+// hari libur nasional/cuti bersama -> default Libur (abu-abu, tidak dihitung), akhir pekan -> default Libur juga (tidak dihitung),
+// selain itu (hari kerja biasa) -> default Hadir.
 function attEffectiveCode(emp, y, m, d){
   const iso = attIso(y,m,d);
   const explicit = emp.days[iso];
   if(explicit) return explicit;
+  if(isHoliday(iso)) return null;
   return attIsWeekend(y,m,d) ? null : "H";
 }
 
@@ -2518,20 +2586,23 @@ function attOpenCellEditor(empId, iso, wdLabel){
   if(!emp) return;
   const [yy,mm,dd] = iso.split("-").map(Number);
   const weekend = attIsWeekend(yy,mm,dd);
-  const cur = emp.days[iso] || (weekend ? "" : "H"); // default tampilan: hari kerja = Hadir, akhir pekan = kosong (libur)
-  const codes = weekend ? ["L","H","I","S","T","A"] : ["H","I","S","T","A"];
+  const hol = isHoliday(iso);
+  const isOff = weekend || hol;
+  const cur = emp.days[iso] || (isOff ? "" : "H"); // default tampilan: hari kerja biasa = Hadir, akhir pekan/libur nasional = kosong (libur)
+  const codes = isOff ? ["R","L","H","I","S","T","A"] : ["H","R","I","S","T","A"];
+  const subLabel = hol ? ` &middot; ${hol.name} (default libur)` : (weekend ? " &middot; akhir pekan (default libur)" : " &middot; default Hadir");
   const backdrop = document.createElement("div");
   backdrop.id = "cellEditorBackdrop";
   backdrop.className = "cell-editor-backdrop";
   backdrop.innerHTML = `
     <div class="cell-editor-pop" style="max-width:300px;">
       <div class="cep-title">${emp.nama}</div>
-      <div class="cep-sub">${iso}${wdLabel?" &middot; "+wdLabel:""}${weekend?" &middot; akhir pekan (default libur)":" &middot; default Hadir"}</div>
+      <div class="cep-sub">${iso}${wdLabel?" &middot; "+wdLabel:""}${subLabel}</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:14px 0 6px;">
         ${codes.map(c=>`<button type="button" class="btn att-code-btn" data-code="${c}" style="border-color:${STATUS_CODE_COLOR[c]};color:${cur===c?'#fff':STATUS_CODE_COLOR[c]};background:${cur===c?STATUS_CODE_COLOR[c]:'transparent'};">${STATUS_CODE_LABEL[c]}</button>`).join("")}
       </div>
       <div class="cep-actions">
-        <button type="button" class="btn cep-clear" id="attCepClear">${weekend?"Kosongkan (libur)":"Kembalikan ke default (Hadir)"}</button>
+        <button type="button" class="btn cep-clear" id="attCepClear">${isOff?"Kosongkan (libur)":"Kembalikan ke default (Hadir)"}</button>
         <button type="button" class="btn" id="attCepCancel">Batal</button>
       </div>
     </div>`;
@@ -2574,7 +2645,10 @@ function renderAttendanceTab(){
   const loginHint = document.getElementById("attLoginHint");
   if(loginHint) loginHint.style.display = isLoggedIn() ? "none" : "block";
   let workdayCount = 0;
-  for(let d=1; d<=nd; d++) if(!attIsWeekend(__attYear,__attMonth,d)) workdayCount++;
+  for(let d=1; d<=nd; d++){
+    const iso = attIso(__attYear,__attMonth,d);
+    if(!attIsWeekend(__attYear,__attMonth,d) && !isHoliday(iso)) workdayCount++;
+  }
 
   // -------- stats (pakai kode EFEKTIF: hari kerja kosong = Hadir, akhir pekan kosong = libur/tidak dihitung) --------
   const totals = { H:0,I:0,S:0,A:0,T:0,L:0 };
@@ -2593,7 +2667,7 @@ function renderAttendanceTab(){
   });
   document.getElementById("absen-stats").innerHTML = [
     {label:"Karyawan", value: employees.length, sub: monthLabel, color:"var(--cyan)"},
-    {label:"Rata-rata kehadiran", value: avgPct+"%", sub:workdayCount+" hari kerja (Sen-Jum)", color:"var(--green)"},
+    {label:"Rata-rata kehadiran", value: avgPct+"%", sub:workdayCount+" hari kerja (di luar akhir pekan &amp; libur)", color:"var(--green)"},
     {label:"Kehadiran terbaik", value: best ? String(best.nama).split(" ")[0] : "-", sub: best ? bestH+" hari hadir" : "-", color:"var(--amber)"},
     {label:"Total lembur", value: totals.L, sub:"kerja di akhir pekan/libur", color:"var(--amber)"},
   ].map(s=>`
@@ -2604,22 +2678,24 @@ function renderAttendanceTab(){
     </div>`).join("");
 
   // -------- grid harian (editable) --------
-  let thead = gridHeaderHTML(nd, weekdayLabels, "Nama");
+  let thead = gridHeaderHTML(nd, weekdayLabels, "Nama", null, __attYear, __attMonth);
   let tbody = "<tbody>";
   employees.forEach((emp,idx)=>{
     tbody += `<tr style="position:relative;">` + attLeadCellHTML(idx, emp);
     for(let d=1; d<=nd; d++){
       const iso = attIso(__attYear,__attMonth,d);
       const weekend = attIsWeekend(__attYear,__attMonth,d);
+      const hol = isHoliday(iso);
       const explicit = emp.days[iso];
-      const code = explicit || (weekend ? null : "H"); // default: hari kerja Hadir, akhir pekan libur (kosong)
+      const code = explicit || ((weekend || hol) ? null : "H"); // default: hari kerja Hadir, akhir pekan/libur nasional = Libur (kosong)
       const wd = weekdayLabels[d-1];
       if(code){
         const color = STATUS_CODE_COLOR[code];
         const isDefault = !explicit; // Hadir bawaan (belum diklik manual)
         tbody += `<td class="daycell editable-cell att-day-cell" data-id="${emp.id}" data-iso="${iso}" data-wd="${wd}" style="background:${color};${isDefault?'opacity:0.55;':''}" title="${emp.nama} — ${STATUS_CODE_LABEL[code]}${isDefault?' (default)':''}">${code}</td>`;
       } else {
-        tbody += `<td class="daycell empty editable-cell att-day-cell att-weekend-off" data-id="${emp.id}" data-iso="${iso}" data-wd="${wd}" title="${emp.nama} — Libur">&middot;</td>`;
+        const tip = hol ? `${emp.nama} — Libur (${hol.name})` : `${emp.nama} — Libur`;
+        tbody += `<td class="daycell empty editable-cell att-day-cell att-weekend-off${hol?' att-holiday-off':''}" data-id="${emp.id}" data-iso="${iso}" data-wd="${wd}" title="${tip}">&middot;</td>`;
       }
     }
     tbody += "</tr>";
@@ -2628,7 +2704,7 @@ function renderAttendanceTab(){
   document.getElementById("absenCalTable").innerHTML = thead + tbody;
   document.getElementById("absenGridLegend").innerHTML = Object.keys(STATUS_CODE_COLOR).map(k=>
     `<span class="legend-item"><span class="swatch" style="background:${STATUS_CODE_COLOR[k]}"></span>${k} = ${STATUS_CODE_LABEL[k]}</span>`
-  ).join("") + `<span class="legend-item"><span class="swatch" style="background:var(--bg-panel-alt);border:1px solid var(--border);"></span>&middot; = Libur (Sab/Min, default)</span>` +
+  ).join("") + `<span class="legend-item"><span class="swatch" style="background:var(--bg-panel-alt);border:1px solid var(--border);"></span>&middot; = Libur (akhir pekan/nasional, default)</span>` +
     `<span class="legend-item" style="opacity:0.7;">Warna pudar = Hadir bawaan (belum diklik manual)</span>`;
 
   document.querySelectorAll(".att-day-cell").forEach(td=>{
@@ -2691,6 +2767,42 @@ function renderAttendanceTab(){
 document.getElementById("attAddEmployeeBtn").addEventListener("click", attAddEmployee);
 populateAttMonthJump();
 renderAttendanceTab();
+
+// -------- kelola hari libur (holiday calendar) --------
+function renderHolidayList(){
+  const body = document.getElementById("holidayListBody");
+  if(!body) return;
+  const sorted = [...DATA.holidays].sort((a,b)=> a.date.localeCompare(b.date));
+  body.innerHTML = sorted.length ? sorted.map(h=>`
+    <tr>
+      <td class="mono" style="font-size:11px;">${h.date}</td>
+      <td style="font-size:12px;">${h.name}</td>
+      <td><button type="button" class="att-del-btn holiday-del-btn" data-date="${h.date}" title="Hapus">&times;</button></td>
+    </tr>`).join("") : `<tr><td colspan="3" style="color:var(--text-muted);">Belum ada tanggal libur.</td></tr>`;
+  body.querySelectorAll(".holiday-del-btn").forEach(btn=>{
+    btn.addEventListener("click", (e)=>{
+      if(!requireLogin()) return;
+      const date = e.currentTarget.dataset.date;
+      DATA.holidays = DATA.holidays.filter(h=>h.date!==date);
+      renderHolidayList();
+      renderAttendanceTab();
+    });
+  });
+}
+document.getElementById("addHolidayBtn").addEventListener("click", ()=>{
+  if(!requireLogin()) return;
+  const dateInp = document.getElementById("newHolidayDate");
+  const nameInp = document.getElementById("newHolidayName");
+  const date = dateInp.value;
+  const name = nameInp.value.trim();
+  if(!date || !name){ alert("Isi tanggal dan nama hari libur dulu."); return; }
+  if(DATA.holidays.some(h=>h.date===date)){ alert("Tanggal ini sudah ada di daftar libur."); return; }
+  DATA.holidays.push({date, name});
+  dateInp.value = ""; nameInp.value = "";
+  renderHolidayList();
+  renderAttendanceTab();
+});
+renderHolidayList();
 
 // -------- import opsional dari Excel: mengisi grid bulan yang sedang dipilih --------
 document.getElementById("absensiFile").addEventListener("change", (e)=>{
