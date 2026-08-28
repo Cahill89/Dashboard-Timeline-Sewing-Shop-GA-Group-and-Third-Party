@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>GMF Seat Cover · Lite</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#F4F6FA; --bg-panel:#FFFFFF; --bg-panel-alt:#EEF1F6; --border:#E1E8F0;
+  --text-primary:#1A2333; --text-secondary:#48566B; --text-muted:#8195AC;
+  --cyan:#1FA9C7; --green:#2FB56A; --amber:#D98A16; --danger:#D9484F; --purple:#7C6FD1;
+}
+*{box-sizing:border-box;}
+body{margin:0;background:var(--bg);color:var(--text-primary);font-family:'IBM Plex Mono',monospace;padding-bottom:74px;-webkit-tap-highlight-color:transparent;}
+h1,h2,h3{font-family:'Space Grotesk',sans-serif;margin:0;}
+button{font-family:inherit;}
+.topbar{position:sticky;top:0;z-index:20;background:#101A2B;color:#fff;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;}
+.topbar .brand{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:14px;}
+.topbar .brand small{display:block;font-family:'IBM Plex Mono',monospace;font-weight:400;font-size:9.5px;color:#8FA0B3;}
+.login-badge{font-size:10px;background:#1c2942;padding:5px 9px;border-radius:14px;cursor:pointer;border:1px solid #2c3c5c;}
+main{padding:12px;max-width:640px;margin:0 auto;}
+.view{display:none;}
+.view.active{display:block;}
+.panel{background:var(--bg-panel);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:12px;}
+.eyebrow{font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:2px;}
+.date-row{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
+.date-row input[type=date]{flex:1;padding:9px;border-radius:8px;border:1px solid var(--border);font-family:inherit;font-size:13px;}
+.iconbtn{width:38px;height:38px;border-radius:8px;border:1px solid var(--border);background:#fff;font-size:16px;cursor:pointer;flex-shrink:0;}
+.holiday-banner{background:#FDF2E0;border:1px solid var(--amber);color:#8a5a0a;font-size:12px;padding:8px 10px;border-radius:8px;margin-bottom:10px;}
+.job-card{background:var(--bg-panel);border:1px solid var(--border);border-left:4px solid var(--cyan);border-radius:10px;padding:12px;margin-bottom:9px;cursor:pointer;}
+.job-card .jc-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;}
+.job-card .jc-title{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:14px;line-height:1.3;}
+.job-card .jc-meta{font-size:10.5px;color:var(--text-muted);margin-top:3px;}
+.badge{display:inline-block;font-size:9.5px;font-weight:700;padding:2px 8px;border-radius:20px;letter-spacing:0.03em;white-space:nowrap;}
+.jc-nums{display:flex;gap:14px;margin-top:8px;font-size:11px;}
+.jc-nums b{font-size:15px;display:block;font-family:'Space Grotesk',sans-serif;}
+.empty-note{color:var(--text-muted);font-size:12.5px;text-align:center;padding:24px 10px;}
+.fab{position:fixed;right:16px;bottom:88px;z-index:15;background:var(--green);color:#fff;border:none;border-radius:28px;padding:13px 20px;font-weight:700;font-size:13px;box-shadow:0 6px 18px rgba(0,0,0,0.25);cursor:pointer;font-family:'Space Grotesk',sans-serif;}
+.searchrow{display:flex;gap:8px;margin-bottom:10px;}
+.searchrow input, .searchrow select{flex:1;padding:9px;border-radius:8px;border:1px solid var(--border);font-family:inherit;font-size:12.5px;}
+.emp-row{display:flex;align-items:center;justify-content:space-between;padding:11px 12px;border:1px solid var(--border);border-radius:10px;margin-bottom:7px;background:#fff;cursor:pointer;}
+.emp-row .emp-name{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:13.5px;}
+.emp-row .emp-sub{font-size:10px;color:var(--text-muted);}
+.status-pill{font-size:11px;font-weight:700;padding:5px 12px;border-radius:20px;min-width:64px;text-align:center;}
+.bottom-nav{position:fixed;bottom:0;left:0;right:0;background:#101A2B;display:flex;z-index:30;padding-bottom:env(safe-area-inset-bottom);}
+.bottom-nav button{flex:1;background:none;border:none;color:#8FA0B3;padding:10px 4px 8px;font-size:10.5px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;}
+.bottom-nav button .ic{font-size:19px;}
+.bottom-nav button.active{color:#fff;}
+.bottom-nav button.active .ic{filter:drop-shadow(0 0 6px rgba(255,255,255,0.5));}
+.sheet-backdrop{position:fixed;inset:0;background:rgba(10,15,25,0.6);z-index:100;display:flex;align-items:flex-end;justify-content:center;}
+.sheet{background:#fff;width:100%;max-width:640px;border-radius:18px 18px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom));max-height:88vh;overflow-y:auto;}
+.sheet h3{font-size:16px;margin-bottom:2px;}
+.sheet .sub{font-size:11.5px;color:var(--text-muted);margin-bottom:14px;}
+.field{margin-bottom:12px;}
+.field label{display:block;font-size:10.5px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:5px;}
+.field input, .field select, .field textarea{width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);font-family:inherit;font-size:14px;}
+.field textarea{resize:vertical;min-height:56px;}
+.row2{display:flex;gap:10px;}
+.row2 .field{flex:1;}
+.session-row{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
+.session-row .slabel{width:70px;font-size:12px;font-weight:600;flex-shrink:0;}
+.session-row input{width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);text-align:center;font-size:15px;font-weight:700;}
+.chip-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:6px 0 14px;}
+.chip{border:1.5px solid var(--border);border-radius:9px;padding:10px 6px;text-align:center;font-weight:700;font-size:13px;background:transparent;cursor:pointer;}
+.btnrow{display:flex;gap:8px;margin-top:6px;}
+.btnrow button{flex:1;padding:12px;border-radius:9px;border:1px solid var(--border);background:#fff;font-weight:700;font-size:13px;cursor:pointer;}
+.btn-primary{background:var(--green)!important;color:#fff!important;border-color:var(--green)!important;}
+.btn-danger-outline{color:var(--danger)!important;border-color:var(--danger)!important;}
+.status-note{font-size:11px;color:var(--text-muted);margin:6px 0 12px;line-height:1.5;}
+.toast{position:fixed;bottom:84px;left:50%;transform:translateX(-50%);background:#101A2B;color:#fff;padding:9px 18px;border-radius:20px;font-size:12px;z-index:200;opacity:0;transition:opacity .25s;pointer-events:none;}
+.toast.show{opacity:1;}
+.checkbox-row{display:flex;align-items:center;gap:8px;font-size:12.5px;margin:2px 0 12px;}
+.loading-note{text-align:center;color:var(--text-muted);font-size:13px;padding:40px 20px;}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">GMF · Seat Cover <small id="topbarSub">Lite &middot; memuat data...</small></div>
+  <div class="login-badge" id="loginBadge">Login</div>
+</div>
+
+<main id="appMain" style="display:none;">
+
+  <!-- ================= TAB TIMELINE ================= -->
+  <section class="view active" id="view-timeline">
+    <div class="panel">
+      <div class="eyebrow">Timeline harian</div>
+      <div class="date-row">
+        <button class="iconbtn" id="tlPrev">&larr;</button>
+        <input type="date" id="tlDate">
+        <button class="iconbtn" id="tlNext">&rarr;</button>
+      </div>
+      <div id="tlHolidayBanner"></div>
+    </div>
+    <div id="tlList"></div>
+    <button class="fab" id="tlAddFab">+ Job hari ini</button>
+  </section>
+
+  <!-- ================= TAB JOB ORDER ================= -->
+  <section class="view" id="view-job">
+    <div class="panel">
+      <div class="eyebrow">Distribusi pengerjaan</div>
+      <div class="searchrow">
+        <input type="text" id="jobSearch" placeholder="Cari job order...">
+        <select id="jobStatusFilter">
+          <option value="">Semua status</option>
+          <option value="OPEN">OPEN</option>
+          <option value="PROGRESS">PROGRESS</option>
+          <option value="CLOSE">CLOSE</option>
+          <option value="HOLD">HOLD</option>
+        </select>
+      </div>
+    </div>
+    <div id="jobList"></div>
+    <button class="fab" id="jobAddFab">+ Job order</button>
+  </section>
+
+  <!-- ================= TAB KEHADIRAN ================= -->
+  <section class="view" id="view-att">
+    <div class="panel">
+      <div class="eyebrow">Kehadiran karyawan</div>
+      <div class="date-row">
+        <button class="iconbtn" id="attPrev">&larr;</button>
+        <input type="date" id="attDate">
+        <button class="iconbtn" id="attNext">&rarr;</button>
+      </div>
+      <div id="attHolidayBanner"></div>
+    </div>
+    <div id="attList"></div>
+    <button class="fab" id="attAddFab">+ Karyawan</button>
+  </section>
+
+</main>
+
+<div id="appLoading" class="loading-note">Memuat data dari cloud...</div>
+
+<div class="bottom-nav">
+  <button class="nav-btn active" data-view="timeline"><span class="ic">&#128197;</span>Timeline</button>
+  <button class="nav-btn" data-view="job"><span class="ic">&#128203;</span>Job Order</button>
+  <button class="nav-btn" data-view="att"><span class="ic">&#128101;</span>Kehadiran</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- Firebase config sama dengan dashboard utama, supaya data selalu sinkron -->
+<script src="firebase-config.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore-compat.js"></script>
+<script>
+firebase.initializeApp(window.FIREBASE_CONFIG);
+const db = firebase.firestore();
+const CLOUD_DOC = db.collection("dashboards").doc("seatCoverGA");
+const AUTH_KEY = "gmfSeatCoverAuthUser";
+const AUTH_USERS = { "GMFPMA": "PM@A3ro4s!@!" };
+function currentUser(){ return localStorage.getItem(AUTH_KEY) || null; }
+function isLoggedIn(){ return !!currentUser(); }
+
+function showToast(msg){
+  const t = document.getElementById("toast");
+  t.textContent = msg; t.classList.add("show");
+  clearTimeout(showToast._tm);
+  showToast._tm = setTimeout(()=> t.classList.remove("show"), 1800);
+}
+
+function refreshLoginBadge(){
+  document.getElementById("loginBadge").textContent = isLoggedIn() ? currentUser()+" · Logout" : "Login";
+}
+document.getElementById("loginBadge").addEventListener("click", ()=>{
+  if(isLoggedIn()){
+    if(confirm("Logout?")){ localStorage.removeItem(AUTH_KEY); refreshLoginBadge(); }
+    return;
+  }
+  openLoginSheet();
+});
+function requireLogin(){
+  if(isLoggedIn()) return true;
+  openLoginSheet();
+  return false;
+}
+function openLoginSheet(){
+  openSheet(`
+    <h3>Login</h3>
+    <div class="sub">Hanya akun terdaftar yang bisa mengubah data. Tanpa login, tetap bisa dilihat.</div>
+    <div class="field"><label>Username</label><input type="text" id="loginUser" autocapitalize="off"></div>
+    <div class="field"><label>Password</label><input type="password" id="loginPass"></div>
+    <div class="btnrow">
+      <button id="loginCancel">Batal</button>
+      <button class="btn-primary" id="loginSubmit">Masuk</button>
+    </div>
+  `);
+  document.getElementById("loginCancel").onclick = closeSheet;
+  document.getElementById("loginSubmit").onclick = ()=>{
+    const u = document.getElementById("loginUser").value.trim();
+    const p = document.getElementById("loginPass").value;
+    if(AUTH_USERS[u] && AUTH_USERS[u] === p){
+      localStorage.setItem(AUTH_KEY, u);
+      refreshLoginBadge();
+      closeSheet();
+      showToast("Berhasil login sebagai "+u);
+    } else {
+      alert("Username/password salah.");
+    }
+  };
+}
+
+// -------- bottom-sheet helper --------
+function openSheet(innerHtml){
+  closeSheet();
+  const bd = document.createElement("div");
+  bd.className = "sheet-backdrop";
+  bd.id = "activeSheet";
+  bd.innerHTML = `<div class="sheet">${innerHtml}</div>`;
+  document.body.appendChild(bd);
+  bd.addEventListener("click", (e)=>{ if(e.target===bd) closeSheet(); });
+}
+function closeSheet(){
+  const el = document.getElementById("activeSheet");
+  if(el) el.remove();
+}
+
+// -------- helper tanggal & shared constants (dipakai bersama dashboard utama) --------
+const WD_ID = ["Min","Sen","Sel","Rab","Kam","Jum","Sab"];
+const MONTHS_ID_FULL = ["","Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
+function parseDate(s){ const [y,m,d] = s.split("-").map(Number); return new Date(y, m-1, d); }
+function isWeekend(dt){ const g = dt.getDay(); return g===0 || g===6; }
+function fmt(dt){
+  const y = dt.getFullYear(), m = String(dt.getMonth()+1).padStart(2,"0"), d = String(dt.getDate()).padStart(2,"0");
+  return `${y}-${m}-${d}`;
+}
+function addDays(iso, n){ const d = parseDate(iso); d.setDate(d.getDate()+n); return fmt(d); }
+function fmtID(iso){ const d = parseDate(iso); return `${d.getDate()} ${MONTHS_ID_FULL[d.getMonth()+1].slice(0,3)} ${d.getFullYear()}`; }
+
+function isHoliday(iso){ return (DATA.holidays||[]).find(h=>h.date===iso) || null; }
+
+const CAT_OPTIONS = ["Seat Cover","Curtain","Fly Kit","Engine & Component Cover","Attendant Cover","Cargo","Leather","Carpet","Lainnya"];
+const STATUS_CODE_COLOR = { H:"#3DDC84", I:"#F5A623", S:"#5AC8FA", A:"#E5484D", T:"#8B7FD6", L:"#FF6B4A", R:"#8FA0B3" };
+const STATUS_CODE_LABEL = { H:"Hadir", I:"Izin", S:"Sakit", A:"Alpa", T:"Training", L:"Lembur", R:"Libur" };
+function attDayCode(val){ return val ? (typeof val === "object" ? val.code : val) : null; }
+function attDayHours(val){ return (val && typeof val === "object") ? {masuk: val.masuk||"", pulang: val.pulang||""} : {masuk:"", pulang:""}; }
+function attIsWeekend(iso){ return isWeekend(parseDate(iso)); }
+function attEffectiveCode(emp, iso){
+  const explicit = attDayCode(emp.days[iso]);
+  if(explicit) return explicit;
+  if(isHoliday(iso)) return null;
+  return attIsWeekend(iso) ? null : "H";
+}
+
+const SHIFT_OPTIONS = { pagi:{hours:4.0}, siang:{hours:3.5}, lembur:{hours:3.0} };
+function shiftHoursFor(k){ return (SHIFT_OPTIONS[k]||SHIFT_OPTIONS.pagi).hours; }
+function emptySessionDay(){ return { pagi:{plan:0,actual:0}, siang:{plan:0,actual:0}, lembur:{plan:0,actual:0,jam:null} }; }
+function migrateFlatValueToSession(v){
+  const d = emptySessionDay();
+  d.pagi.plan=v; d.pagi.actual=v; d.siang.plan=v; d.siang.actual=v;
+  return d;
+}
+function cellIsEmpty(dayObj){
+  if(!dayObj) return true;
+  return ["pagi","siang","lembur"].every(k=> !dayObj[k] || (dayObj[k].plan===0 && dayObj[k].actual===0));
+}
+function cellHeadcount(dayObj, field){
+  if(!dayObj) return 0;
+  return Math.max(dayObj.pagi[field]||0, dayObj.siang[field]||0);
+}
+function cellHours(dayObj, field){
+  if(!dayObj) return 0;
+  return ["pagi","siang","lembur"].reduce((sum,k)=>{
+    const hrs = (k==="lembur" && dayObj.lembur && dayObj.lembur.jam!=null) ? dayObj.lembur.jam : shiftHoursFor(k);
+    return sum + (dayObj[k][field]||0)*hrs;
+  },0);
+}
+function pctComplete(p, today){
+  if(p.status === "CLOSE") return 100;
+  if(p.status === "HOLD") return null;
+  if(!p.start) return 0;
+  const sd = parseDate(p.start), ed = parseDate(p.end);
+  if(today < sd) return 0;
+  if(today > ed) return 100;
+  const span = Math.round((ed-sd)/86400000)+1;
+  return Math.round(Math.min(100,Math.max(0,(today-sd)/86400000/span*100)));
+}
+
+// -------- recompute daily_totals dari calendar_products (sama persis dengan dashboard utama) --------
+function recomputeFromCalendar(){
+  const scheduled = DATA.calendar_products.filter(p=> Object.keys(p.days||{}).length>0);
+  let dateMin = null, dateMax = null;
+  scheduled.forEach(p=>{
+    const keys = Object.keys(p.days).filter(iso=>!cellIsEmpty(p.days[iso])).sort();
+    if(keys.length){ p.start = keys[0]; p.end = keys[keys.length-1]; }
+    Object.keys(p.days).forEach(k=>{
+      if(!dateMin || k < dateMin) dateMin = k;
+      if(!dateMax || k > dateMax) dateMax = k;
+    });
+  });
+  const dailyTotals = [];
+  if(dateMin && dateMax){
+    let cur = parseDate(dateMin);
+    const endD = parseDate(dateMax);
+    while(cur <= endD){
+      const iso = fmt(cur);
+      const total = scheduled.reduce((s,p)=> s + cellHeadcount(p.days[iso],"actual"), 0);
+      dailyTotals.push({ date: iso, total, weekend: isWeekend(cur) });
+      cur.setDate(cur.getDate()+1);
+    }
+  }
+  const today = new Date();
+  scheduled.forEach(p=>{
+    p.total_mandays = Object.keys(p.days).reduce((a,iso)=> a + cellHeadcount(p.days[iso],"actual"), 0);
+  });
+  DATA.all_products.forEach(ap=>{
+    const match = scheduled.find(p=>p.desc === ap.desc);
+    if(match){ ap.mandays = match.total_mandays; ap.start = match.start; ap.end = match.end; ap.pct = pctComplete(match, today); }
+  });
+  DATA.date_min = dateMin; DATA.date_max = dateMax;
+  DATA.daily_totals = dailyTotals;
+  DATA.total_mandays_scheduled = scheduled.reduce((s,p)=>s+(p.total_mandays||0),0);
+  DATA.total_jobs = DATA.all_products.length;
+}
+
+function regenerateProductSchedule(desc, newStart, newEnd, mp, includeWeekend){
+  let cp = DATA.calendar_products.find(c=>c.desc===desc);
+  if(!cp){
+    const src = DATA.all_products.find(a=>a.desc===desc) || {};
+    cp = { desc, cat: src.cat || "Lainnya", status: src.status || "OPEN", days:{}, start:null, end:null };
+    DATA.calendar_products.push(cp);
+  }
+  const newDays = {};
+  let cur = parseDate(newStart);
+  const endD = parseDate(newEnd);
+  while(cur <= endD){
+    if(includeWeekend || !isWeekend(cur)) newDays[fmt(cur)] = migrateFlatValueToSession(mp);
+    cur.setDate(cur.getDate()+1);
+  }
+  cp.days = newDays;
+  cp.start = newStart; cp.end = newEnd;
+  recomputeFromCalendar();
+}
+
+// ======================================================================
+// LOAD DATA DARI FIRESTORE (dokumen sama dengan dashboard utama)
+// ======================================================================
+let DATA = null;
+async function loadCloudData(){
+  try{
+    const snap = await CLOUD_DOC.get();
+    if(snap.exists && snap.data() && snap.data().payload){
+      return JSON.parse(snap.data().payload);
+    }
+  }catch(e){ console.error("Gagal memuat data dari Firestore:", e); }
+  return null;
+}
+async function saveDataToCloud(){
+  try{
+    const clone = JSON.parse(JSON.stringify(DATA));
+    await CLOUD_DOC.set({
+      payload: JSON.stringify(clone),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedBy: currentUser() || "unknown"
+    });
+    return true;
+  }catch(e){
+    console.error("Gagal menyimpan ke Firestore:", e);
+    alert("Gagal menyimpan ke cloud. Cek koneksi internet lalu coba lagi.");
+    return false;
+  }
+}
+
+(async function boot(){
+  const cloud = await loadCloudData();
+  if(!cloud || !cloud.calendar_products){
+    document.getElementById("appLoading").textContent = "Belum ada data di cloud. Buka dashboard utama dulu untuk mengisi data awal.";
+    return;
+  }
+  DATA = cloud;
+  if(!Array.isArray(DATA.holidays)) DATA.holidays = [];
+  if(!DATA.attendance) DATA.attendance = { employees: [] };
+  if(!Array.isArray(DATA.attendance.employees)) DATA.attendance.employees = [];
+  // migrasi nilai flat lama -> objek sesi (sama seperti dashboard utama)
+  DATA.calendar_products.forEach(p=>{
+    const migrated = {};
+    Object.keys(p.days||{}).forEach(iso=>{
+      const v = p.days[iso];
+      const obj = (v && typeof v === "object") ? v : migrateFlatValueToSession(v);
+      if(!obj.lembur) obj.lembur = {plan:0, actual:0, jam:null};
+      if(obj.lembur.jam === undefined) obj.lembur.jam = null;
+      migrated[iso] = obj;
+    });
+    p.days = migrated;
+  });
+
+  document.getElementById("appLoading").style.display = "none";
+  document.getElementById("appMain").style.display = "block";
+  document.getElementById("topbarSub").textContent = "Lite · " + (DATA.total_jobs||DATA.all_products.length) + " job order";
+  refreshLoginBadge();
+
+  const todayIso = DATA.today || fmt(new Date());
+  document.getElementById("tlDate").value = todayIso;
+  document.getElementById("attDate").value = todayIso;
+
+  renderTimeline();
+  renderJobList();
+  renderAttList();
+})();
+
+// ======================================================================
+// TAB NAV
+// ======================================================================
+document.querySelectorAll(".nav-btn").forEach(btn=>{
+  btn.addEventListener("click", ()=>{
+    document.querySelectorAll(".nav-btn").forEach(b=>b.classList.remove("active"));
+    btn.classList.add("active");
+    document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
+    document.getElementById("view-"+btn.dataset.view).classList.add("active");
+  });
+});
+
+// ======================================================================
+// TAB 1 — TIMELINE
+// ======================================================================
+function renderTimeline(){
+  const iso = document.getElementById("tlDate").value;
+  const hol = isHoliday(iso);
+  document.getElementById("tlHolidayBanner").innerHTML = hol ? `<div class="holiday-banner">&#128197; Hari libur: ${hol.name}</div>` : "";
+
+  const list = document.getElementById("tlList");
+  const active = DATA.calendar_products.filter(p=> p.start && p.end && iso >= p.start && iso <= p.end);
+  if(!active.length){
+    list.innerHTML = `<div class="empty-note">Tidak ada job order terjadwal di tanggal ini.<br>Tap "+ Job hari ini" untuk memilih job order dan isi manpower-nya.</div>`;
+    return;
+  }
+  list.innerHTML = active.map((p,i)=>{
+    const idx = DATA.calendar_products.indexOf(p);
+    const day = p.days[iso];
+    const planOrg = cellHeadcount(day,"plan"), actualOrg = cellHeadcount(day,"actual");
+    const hasLembur = day && (day.lembur.plan>0 || day.lembur.actual>0);
+    const c = DATA.status_colors[p.status] || "#8FA0B3";
+    return `<div class="job-card" style="border-left-color:${c}" data-idx="${idx}">
+      <div class="jc-top">
+        <div class="jc-title">${p.desc}</div>
+        <span class="badge" style="background:${c}22;color:${c};">${p.status}</span>
+      </div>
+      <div class="jc-meta">${p.cat}${hasLembur?' &middot; <span style="color:var(--amber);font-weight:700;">LEMBUR</span>':''}</div>
+      <div class="jc-nums">
+        <div>Plan<b>${planOrg||"-"}</b></div>
+        <div>Actual<b style="color:${actualOrg>=planOrg?'var(--green)':'var(--danger)'}">${actualOrg||"-"}</b></div>
+      </div>
+    </div>`;
+  }).join("");
+  list.querySelectorAll(".job-card").forEach(card=>{
+    card.addEventListener("click", ()=> openTimelineSheet(+card.dataset.idx, iso));
+  });
+}
+document.getElementById("tlDate").addEventListener("change", renderTimeline);
+document.getElementById("tlPrev").addEventListener("click", ()=>{ document.getElementById("tlDate").value = addDays(document.getElementById("tlDate").value,-1); renderTimeline(); });
+document.getElementById("tlNext").addEventListener("click", ()=>{ document.getElementById("tlDate").value = addDays(document.getElementById("tlDate").value,1); renderTimeline(); });
+
+document.getElementById("tlAddFab").addEventListener("click", ()=>{
+  if(!requireLogin()) return;
+  const iso = document.getElementById("tlDate").value;
+  const options = DATA.calendar_products.map((p,idx)=>`<option value="${idx}">${p.desc}</option>`).join("");
+  openSheet(`
+    <h3>Pilih job order</h3>
+    <div class="sub">${fmtID(iso)} &mdash; job order yang sudah ada di Distribusi Pengerjaan</div>
+    <div class="field"><label>Job order</label><select id="tlPickJob">${options}</select></div>
+    <div class="btnrow">
+      <button id="tlPickCancel">Batal</button>
+      <button class="btn-primary" id="tlPickGo">Lanjut isi manpower</button>
+    </div>
+  `);
+  document.getElementById("tlPickCancel").onclick = closeSheet;
+  document.getElementById("tlPickGo").onclick = ()=>{
+    const idx = +document.getElementById("tlPickJob").value;
+    closeSheet();
+    openTimelineSheet(idx, iso);
+  };
+});
+
+function openTimelineSheet(idx, iso){
+  const p = DATA.calendar_products[idx];
+  if(!p.days[iso]) p.days[iso] = emptySessionDay();
+  const day = p.days[iso];
+  const wd = WD_ID[parseDate(iso).getDay()];
+  openSheet(`
+    <h3>${p.desc}</h3>
+    <div class="sub">${fmtID(iso)} &middot; ${wd}</div>
+    <div class="session-row"><span class="slabel">Pagi Plan</span><input type="number" min="0" id="tlPagiPlan" value="${day.pagi.plan}"><span class="slabel">Actual</span><input type="number" min="0" id="tlPagiAct" value="${day.pagi.actual}"></div>
+    <div class="session-row"><span class="slabel">Siang Plan</span><input type="number" min="0" id="tlSiangPlan" value="${day.siang.plan}"><span class="slabel">Actual</span><input type="number" min="0" id="tlSiangAct" value="${day.siang.actual}"></div>
+    <div class="checkbox-row"><input type="checkbox" id="tlLemburOn" ${(day.lembur.plan>0||day.lembur.actual>0)?"checked":""}> Ada lembur hari ini</div>
+    <div class="session-row"><span class="slabel">Lembur Plan</span><input type="number" min="0" id="tlLemburPlan" value="${day.lembur.plan}"><span class="slabel">Actual</span><input type="number" min="0" id="tlLemburAct" value="${day.lembur.actual}"></div>
+    <div class="field"><label>Jam lembur hari ini (0 kalau tidak lembur)</label><input type="number" min="0" step="0.5" id="tlLemburJam" value="${day.lembur.jam||0}"></div>
+    <div class="btnrow">
+      <button class="btn-danger-outline" id="tlDelDay">Kosongkan</button>
+      <button id="tlCancel">Batal</button>
+      <button class="btn-primary" id="tlSave">Simpan</button>
+    </div>
+  `);
+  document.getElementById("tlCancel").onclick = closeSheet;
+  document.getElementById("tlDelDay").onclick = async ()=>{
+    if(!requireLogin()) return;
+    delete p.days[iso];
+    recomputeFromCalendar();
+    closeSheet();
+    await saveDataToCloud();
+    showToast("Tersimpan");
+    renderTimeline();
+  };
+  document.getElementById("tlSave").onclick = async ()=>{
+    if(!requireLogin()) return;
+    day.pagi.plan = +document.getElementById("tlPagiPlan").value||0;
+    day.pagi.actual = +document.getElementById("tlPagiAct").value||0;
+    day.siang.plan = +document.getElementById("tlSiangPlan").value||0;
+    day.siang.actual = +document.getElementById("tlSiangAct").value||0;
+    if(document.getElementById("tlLemburOn").checked){
+      day.lembur.plan = +document.getElementById("tlLemburPlan").value||0;
+      day.lembur.actual = +document.getElementById("tlLemburAct").value||0;
+      day.lembur.jam = +document.getElementById("tlLemburJam").value||0;
+    } else {
+      day.lembur.plan = 0; day.lembur.actual = 0; day.lembur.jam = 0;
+    }
+    recomputeFromCalendar();
+    closeSheet();
+    await saveDataToCloud();
+    showToast("Tersimpan ke cloud");
+    renderTimeline();
+  };
+}
+
+// ======================================================================
+// TAB 2 — JOB ORDER (Distribusi Pengerjaan)
+// ======================================================================
+function renderJobList(){
+  const q = document.getElementById("jobSearch").value.toLowerCase();
+  const st = document.getElementById("jobStatusFilter").value;
+  const list = document.getElementById("jobList");
+  const rows = DATA.all_products.map((p,idx)=>({p,idx})).filter(({p})=>{
+    if(st && p.status !== st) return false;
+    if(q && !p.desc.toLowerCase().includes(q)) return false;
+    return true;
+  });
+  if(!rows.length){ list.innerHTML = `<div class="empty-note">Tidak ada job order yang cocok.</div>`; return; }
+  list.innerHTML = rows.map(({p,idx})=>{
+    const c = DATA.status_colors[p.status] || "#8FA0B3";
+    return `<div class="job-card" style="border-left-color:${c}" data-idx="${idx}">
+      <div class="jc-top">
+        <div class="jc-title">${p.desc}</div>
+        <span class="badge" style="background:${c}22;color:${c};">${p.status}</span>
+      </div>
+      <div class="jc-meta">${p.cat} &middot; ${p.tad? p.tad+" org/hari":"-"} &middot; ${p.start?fmtID(p.start)+" &ndash; "+fmtID(p.end):(p.target||"TBD")}</div>
+    </div>`;
+  }).join("");
+  list.querySelectorAll(".job-card").forEach(card=>{
+    card.addEventListener("click", ()=> openJobSheet(+card.dataset.idx));
+  });
+}
+document.getElementById("jobSearch").addEventListener("input", renderJobList);
+document.getElementById("jobStatusFilter").addEventListener("change", renderJobList);
+
+function jobFormHTML(p){
+  return `
+    <div class="field"><label>Nama job order</label><input type="text" id="jfDesc" value="${(p.desc||"").replace(/"/g,'&quot;')}"></div>
+    <div class="row2">
+      <div class="field"><label>Kategori</label><select id="jfCat">${CAT_OPTIONS.map(c=>`<option ${c===p.cat?"selected":""}>${c}</option>`).join("")}</select></div>
+      <div class="field"><label>Status</label><select id="jfStatus">${["OPEN","PROGRESS","CLOSE","HOLD"].map(s=>`<option ${s===p.status?"selected":""}>${s}</option>`).join("")}</select></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label>Manpower/hari</label><input type="number" min="0" id="jfTad" value="${p.tad??""}"></div>
+      <div class="field"><label>Target/keterangan</label><input type="text" id="jfTarget" value="${(p.target||"").replace(/"/g,'&quot;')}" placeholder="TBD"></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label>Mulai (opsional)</label><input type="date" id="jfStart" value="${p.start||""}"></div>
+      <div class="field"><label>Selesai (opsional)</label><input type="date" id="jfEnd" value="${p.end||""}"></div>
+    </div>
+    <div class="status-note">Isi Mulai &amp; Selesai untuk otomatis membuat jadwal manpower harian (rata, hari kerja saja) di tab Timeline. Kalau dikosongkan, job order cuma tersimpan sebagai daftar &mdash; jadwalnya bisa diatur lewat dashboard utama nanti.</div>
+    <div class="field"><label>Catatan</label><textarea id="jfRemarks">${p.remarks||""}</textarea></div>
+  `;
+}
+
+document.getElementById("jobAddFab").addEventListener("click", ()=>{
+  if(!requireLogin()) return;
+  openSheet(`
+    <h3>Job order baru</h3>
+    ${jobFormHTML({cat:"Seat Cover", status:"OPEN"})}
+    <div class="btnrow">
+      <button id="jfCancel">Batal</button>
+      <button class="btn-primary" id="jfSave">Simpan</button>
+    </div>
+  `);
+  document.getElementById("jfCancel").onclick = closeSheet;
+  document.getElementById("jfSave").onclick = async ()=>{
+    const desc = document.getElementById("jfDesc").value.trim() || "Job order baru";
+    if(DATA.all_products.some(p=>p.desc===desc)){ alert("Nama job order ini sudah ada."); return; }
+    const newP = {
+      desc, cat: document.getElementById("jfCat").value, status: document.getElementById("jfStatus").value,
+      tad: document.getElementById("jfTad").value===""?null:+document.getElementById("jfTad").value,
+      target: document.getElementById("jfTarget").value.trim() || "TBD",
+      remarks: document.getElementById("jfRemarks").value.trim() || null,
+      pct: 0, mandays: 0, start: null, end: null
+    };
+    DATA.all_products.push(newP);
+    const startVal = document.getElementById("jfStart").value, endVal = document.getElementById("jfEnd").value;
+    if(startVal && endVal){
+      regenerateProductSchedule(desc, startVal, endVal, newP.tad||1, false);
+    }
+    closeSheet();
+    await saveDataToCloud();
+    showToast("Job order ditambahkan");
+    renderJobList(); renderTimeline();
+  };
+});
+
+function openJobSheet(idx){
+  const p = DATA.all_products[idx];
+  openSheet(`
+    <h3>Edit job order</h3>
+    ${jobFormHTML(p)}
+    <div class="btnrow">
+      <button class="btn-danger-outline" id="jfDelete">Hapus</button>
+      <button id="jfCancel2">Batal</button>
+      <button class="btn-primary" id="jfSave2">Simpan</button>
+    </div>
+  `);
+  document.getElementById("jfCancel2").onclick = closeSheet;
+  document.getElementById("jfDelete").onclick = async ()=>{
+    if(!requireLogin()) return;
+    if(!confirm(`Hapus job order "${p.desc}"?`)) return;
+    DATA.all_products.splice(idx,1);
+    DATA.calendar_products = DATA.calendar_products.filter(cp=>cp.desc!==p.desc);
+    recomputeFromCalendar();
+    closeSheet();
+    await saveDataToCloud();
+    showToast("Job order dihapus");
+    renderJobList(); renderTimeline();
+  };
+  document.getElementById("jfSave2").onclick = async ()=>{
+    if(!requireLogin()) return;
+    const oldDesc = p.desc;
+    const newDesc = document.getElementById("jfDesc").value.trim() || oldDesc;
+    p.desc = newDesc; p.cat = document.getElementById("jfCat").value; p.status = document.getElementById("jfStatus").value;
+    p.tad = document.getElementById("jfTad").value===""?null:+document.getElementById("jfTad").value;
+    p.target = document.getElementById("jfTarget").value.trim() || "TBD";
+    p.remarks = document.getElementById("jfRemarks").value.trim() || null;
+    DATA.calendar_products.forEach(cp=>{ if(cp.desc===oldDesc){ cp.desc=newDesc; cp.cat=p.cat; cp.status=p.status; } });
+    const startVal = document.getElementById("jfStart").value, endVal = document.getElementById("jfEnd").value;
+    if(startVal && endVal){
+      regenerateProductSchedule(newDesc, startVal, endVal, p.tad||1, false);
+    } else {
+      recomputeFromCalendar();
+    }
+    closeSheet();
+    await saveDataToCloud();
+    showToast("Perubahan disimpan");
+    renderJobList(); renderTimeline();
+  };
+}
+
+// ======================================================================
+// TAB 3 — KEHADIRAN KARYAWAN
+// ======================================================================
+function renderAttList(){
+  const iso = document.getElementById("attDate").value;
+  const hol = isHoliday(iso);
+  document.getElementById("attHolidayBanner").innerHTML = hol ? `<div class="holiday-banner">&#128197; Hari libur: ${hol.name}</div>` : "";
+
+  const list = document.getElementById("attList");
+  const employees = DATA.attendance.employees;
+  if(!employees.length){ list.innerHTML = `<div class="empty-note">Belum ada karyawan. Tap "+ Karyawan" untuk menambah.</div>`; return; }
+  list.innerHTML = employees.map((emp,idx)=>{
+    const code = attEffectiveCode(emp, iso);
+    const label = code ? (STATUS_CODE_LABEL[code]||code) : "Libur";
+    const color = code ? (STATUS_CODE_COLOR[code]||"#8FA0B3") : "#8FA0B3";
+    return `<div class="emp-row" data-idx="${idx}">
+      <div><div class="emp-name">${emp.nama}</div><div class="emp-sub">${emp.nopeg||""}${emp.peran?" &middot; "+emp.peran:""}</div></div>
+      <span class="status-pill" style="background:${color}22;color:${color};">${label}</span>
+    </div>`;
+  }).join("");
+  list.querySelectorAll(".emp-row").forEach(row=>{
+    row.addEventListener("click", ()=> openAttSheet(+row.dataset.idx, iso));
+  });
+}
+document.getElementById("attDate").addEventListener("change", renderAttList);
+document.getElementById("attPrev").addEventListener("click", ()=>{ document.getElementById("attDate").value = addDays(document.getElementById("attDate").value,-1); renderAttList(); });
+document.getElementById("attNext").addEventListener("click", ()=>{ document.getElementById("attDate").value = addDays(document.getElementById("attDate").value,1); renderAttList(); });
+
+document.getElementById("attAddFab").addEventListener("click", ()=>{
+  if(!requireLogin()) return;
+  openSheet(`
+    <h3>Karyawan baru</h3>
+    <div class="field"><label>Nama</label><input type="text" id="afNama"></div>
+    <div class="row2">
+      <div class="field"><label>Nopeg</label><input type="text" id="afNopeg"></div>
+      <div class="field"><label>Peran</label><input type="text" id="afPeran"></div>
+    </div>
+    <div class="btnrow">
+      <button id="afCancel">Batal</button>
+      <button class="btn-primary" id="afSave">Simpan</button>
+    </div>
+  `);
+  document.getElementById("afCancel").onclick = closeSheet;
+  document.getElementById("afSave").onclick = async ()=>{
+    const nama = document.getElementById("afNama").value.trim();
+    if(!nama){ alert("Isi nama dulu."); return; }
+    DATA.attendance.employees.push({ id: "att_"+Date.now().toString(36), nama, nopeg: document.getElementById("afNopeg").value.trim(), peran: document.getElementById("afPeran").value.trim(), days:{} });
+    closeSheet();
+    await saveDataToCloud();
+    showToast("Karyawan ditambahkan");
+    renderAttList();
+  };
+});
+
+function openAttSheet(idx, iso){
+  const emp = DATA.attendance.employees[idx];
+  const weekend = attIsWeekend(iso);
+  const hol = isHoliday(iso);
+  const isOff = weekend || hol;
+  const rawVal = emp.days[iso];
+  const curCode = attDayCode(rawVal) || (isOff ? "" : "H");
+  const curHours = attDayHours(rawVal);
+  let selectedCode = curCode;
+  const codes = isOff ? ["R","H","L","I","S","T","A"] : ["H","L","R","I","S","T","A"];
+  const wd = WD_ID[parseDate(iso).getDay()];
+
+  openSheet(`
+    <h3>${emp.nama}</h3>
+    <div class="sub">${fmtID(iso)} &middot; ${wd}${hol?" &middot; "+hol.name:(weekend?" &middot; akhir pekan":"")}</div>
+    <div class="chip-grid" id="afChips">
+      ${codes.map(c=>`<button type="button" class="chip af-chip" data-code="${c}" style="border-color:${STATUS_CODE_COLOR[c]};color:${selectedCode===c?'#fff':STATUS_CODE_COLOR[c]};background:${selectedCode===c?STATUS_CODE_COLOR[c]:'transparent'};">${STATUS_CODE_LABEL[c]}</button>`).join("")}
+    </div>
+    <div class="row2">
+      <div class="field"><label>Jam masuk</label><input type="time" id="afMasuk" value="${curHours.masuk}"></div>
+      <div class="field"><label>Jam pulang</label><input type="time" id="afPulang" value="${curHours.pulang}"></div>
+    </div>
+    <div class="btnrow">
+      <button class="btn-danger-outline" id="afClear">${isOff?"Kosongkan":"Ke default"}</button>
+      <button id="afCancel2">Batal</button>
+      <button class="btn-primary" id="afSaveCell">Simpan</button>
+    </div>
+  `);
+  document.querySelectorAll(".af-chip").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      selectedCode = btn.dataset.code;
+      document.querySelectorAll(".af-chip").forEach(b=>{
+        const c = b.dataset.code;
+        const on = c===selectedCode;
+        b.style.background = on ? STATUS_CODE_COLOR[c] : "transparent";
+        b.style.color = on ? "#fff" : STATUS_CODE_COLOR[c];
+      });
+    });
+  });
+  document.getElementById("afCancel2").onclick = closeSheet;
+  document.getElementById("afClear").onclick = async ()=>{
+    if(!requireLogin()) return;
+    delete emp.days[iso];
+    closeSheet();
+    await saveDataToCloud();
+    showToast("Tersimpan");
+    renderAttList();
+  };
+  document.getElementById("afSaveCell").onclick = async ()=>{
+    if(!requireLogin()) return;
+    const masuk = document.getElementById("afMasuk").value;
+    const pulang = document.getElementById("afPulang").value;
+    emp.days[iso] = (masuk||pulang) ? { code: selectedCode, masuk, pulang } : selectedCode;
+    closeSheet();
+    await saveDataToCloud();
+    showToast("Tersimpan ke cloud");
+    renderAttList();
+  };
+}
+</script>
+</body>
+</html>

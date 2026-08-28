@@ -92,11 +92,12 @@ table.cal td.desc .cat-tag{display:block;margin-top:3px;font-family:'IBM Plex Mo
 table.cal th{background:var(--bg-panel-alt);color:var(--text-secondary);font-weight:700;font-size:13px;position:sticky;top:0;z-index:2;}
 table.cal th.desc{background:var(--bg-panel);border-left:5px solid transparent;font-size:13px;letter-spacing:0.06em;text-transform:uppercase;color:var(--amber);z-index:4;top:0;}
 table.cal th.month{font-size:16px;color:#fff;font-weight:700;letter-spacing:0.05em;padding:12px 0;text-shadow:0 1px 2px rgba(0,0,0,0.3);border-right:2px solid rgba(255,255,255,0.35);}
-table.cal td.daycell{width:40px;height:40px;color:#0A0A0A;font-weight:700;font-size:14px;border-radius:5px;transition:transform .12s ease, filter .12s ease;cursor:default;padding:0;}
+table.cal td.daycell{width:40px;height:40px;color:#0A0A0A;font-weight:700;font-size:14px;border-radius:5px;transition:transform .12s ease, filter .12s ease;cursor:default;padding:0;position:relative;}
 table.cal td.split-cell{padding:0;overflow:hidden;}
 table.cal td.split-cell .cell-half{width:100%;height:50%;display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:700;color:#0A0A0A;}
 table.cal td.split-cell{position:relative;}
 .assign-dot{position:absolute;top:1px;right:2px;font-size:8px;line-height:1;color:#0A0A0A;background:rgba(255,255,255,0.85);border-radius:6px;padding:1px 3px;pointer-events:none;z-index:2;}
+.att-jam-badge{position:absolute;bottom:1px;right:2px;font-size:7px;line-height:1;opacity:0.75;pointer-events:none;}
 table.cal td.split-cell .cell-plan{border-bottom:1px solid rgba(0,0,0,0.15);color:#1A2942;text-shadow:none;}
 table.cal td.split-cell .cell-empty-half{background:#E4EAF2 !important;}
 table.cal td.split-cell:not(.empty-edit):not(.weekend-empty):hover .cell-half{filter:brightness(1.18);}
@@ -520,6 +521,7 @@ window.FIREBASE_CONFIG = {
           <select id="attMonthJump"></select>
           <button class="btn" id="attMonthNext">&rarr;</button>
           <button class="btn" id="attAddEmployeeBtn" style="border-color:var(--cyan);color:var(--cyan);">+ Tambah karyawan</button>
+          <button class="btn" id="attDownloadXlsxBtn" style="border-color:var(--green);color:var(--green);">&#128190; Unduh Excel</button>
           <button class="btn cep-save" id="attSaveBtn" style="background:var(--amber);color:#fff;border-color:var(--amber);">&#128190; Simpan perubahan</button>
         </div>
       </div>
@@ -2529,9 +2531,14 @@ function attIsWeekend(y,m,d){ const g = new Date(y,m-1,d).getDay(); return g===0
 // Kode efektif suatu tanggal: kalau sudah diisi manual, pakai itu. Kalau belum diisi:
 // hari libur nasional/cuti bersama -> default Libur (abu-abu, tidak dihitung), akhir pekan -> default Libur juga (tidak dihitung),
 // selain itu (hari kerja biasa) -> default Hadir.
+// emp.days[iso] bisa berupa string kode saja ("H") atau objek {code, masuk, pulang} kalau jam kerja dicatat.
+// Helper ini menormalkan supaya kode lama (string) & baru (objek) sama-sama bisa dibaca.
+function attDayCode(val){ return val ? (typeof val === "object" ? val.code : val) : null; }
+function attDayHours(val){ return (val && typeof val === "object") ? {masuk: val.masuk||"", pulang: val.pulang||""} : {masuk:"", pulang:""}; }
+
 function attEffectiveCode(emp, y, m, d){
   const iso = attIso(y,m,d);
-  const explicit = emp.days[iso];
+  const explicit = attDayCode(emp.days[iso]);
   if(explicit) return explicit;
   if(isHoliday(iso)) return null;
   return attIsWeekend(y,m,d) ? null : "H";
@@ -2588,8 +2595,12 @@ function attOpenCellEditor(empId, iso, wdLabel){
   const weekend = attIsWeekend(yy,mm,dd);
   const hol = isHoliday(iso);
   const isOff = weekend || hol;
-  const cur = emp.days[iso] || (isOff ? "" : "H"); // default tampilan: hari kerja biasa = Hadir, akhir pekan/libur nasional = kosong (libur)
-  const codes = isOff ? ["R","L","H","I","S","T","A"] : ["H","R","I","S","T","A"];
+  const rawVal = emp.days[iso];
+  const curCode = attDayCode(rawVal) || (isOff ? "" : "H"); // default tampilan: hari kerja biasa = Hadir, akhir pekan/libur nasional = kosong (libur)
+  const curHours = attDayHours(rawVal);
+  let selectedCode = curCode;
+  // Lembur sekarang tersedia untuk semua hari (biasa maupun akhir pekan/libur), tidak cuma akhir pekan.
+  const codes = isOff ? ["R","H","L","I","S","T","A"] : ["H","L","R","I","S","T","A"];
   const subLabel = hol ? ` &middot; ${hol.name} (default libur)` : (weekend ? " &middot; akhir pekan (default libur)" : " &middot; default Hadir");
   const backdrop = document.createElement("div");
   backdrop.id = "cellEditorBackdrop";
@@ -2598,22 +2609,53 @@ function attOpenCellEditor(empId, iso, wdLabel){
     <div class="cell-editor-pop" style="max-width:300px;">
       <div class="cep-title">${emp.nama}</div>
       <div class="cep-sub">${iso}${wdLabel?" &middot; "+wdLabel:""}${subLabel}</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:14px 0 6px;">
-        ${codes.map(c=>`<button type="button" class="btn att-code-btn" data-code="${c}" style="border-color:${STATUS_CODE_COLOR[c]};color:${cur===c?'#fff':STATUS_CODE_COLOR[c]};background:${cur===c?STATUS_CODE_COLOR[c]:'transparent'};">${STATUS_CODE_LABEL[c]}</button>`).join("")}
+      <div id="attCodeGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:14px 0 6px;">
+        ${codes.map(c=>`<button type="button" class="btn att-code-btn" data-code="${c}" style="border-color:${STATUS_CODE_COLOR[c]};color:${selectedCode===c?'#fff':STATUS_CODE_COLOR[c]};background:${selectedCode===c?STATUS_CODE_COLOR[c]:'transparent'};">${STATUS_CODE_LABEL[c]}</button>`).join("")}
       </div>
+      <div id="attHoursRow" style="display:flex;gap:8px;margin:10px 0 6px;">
+        <label style="flex:1;">
+          <span class="cep-label" style="display:block;margin-bottom:3px;">Jam masuk</span>
+          <input type="time" id="attJamMasuk" class="att-input" style="width:100%;padding:6px;" value="${curHours.masuk}">
+        </label>
+        <label style="flex:1;">
+          <span class="cep-label" style="display:block;margin-bottom:3px;">Jam pulang</span>
+          <input type="time" id="attJamPulang" class="att-input" style="width:100%;padding:6px;" value="${curHours.pulang}">
+        </label>
+      </div>
+      <div class="cep-summary-note" id="attHoursNote" style="margin-bottom:8px;">Opsional &mdash; isi kalau mau catat jam aktual masuk/pulang hari ini.</div>
       <div class="cep-actions">
         <button type="button" class="btn cep-clear" id="attCepClear">${isOff?"Kosongkan (libur)":"Kembalikan ke default (Hadir)"}</button>
         <button type="button" class="btn" id="attCepCancel">Batal</button>
+        <button type="button" class="btn cep-save" id="attCepSave">Simpan</button>
       </div>
     </div>`;
   document.body.appendChild(backdrop);
   backdrop.addEventListener("click", (ev)=>{ if(ev.target===backdrop) attCellEditorClose(); });
+
+  function refreshCodeButtons(){
+    backdrop.querySelectorAll(".att-code-btn").forEach(btn=>{
+      const c = btn.dataset.code;
+      const on = c === selectedCode;
+      btn.style.background = on ? STATUS_CODE_COLOR[c] : "transparent";
+      btn.style.color = on ? "#fff" : STATUS_CODE_COLOR[c];
+    });
+  }
   backdrop.querySelectorAll(".att-code-btn").forEach(btn=>{
     btn.addEventListener("click", ()=>{
-      emp.days[iso] = btn.dataset.code;
-      attCellEditorClose();
-      renderAttendanceTab();
+      selectedCode = btn.dataset.code;
+      refreshCodeButtons();
     });
+  });
+  document.getElementById("attCepSave").addEventListener("click", ()=>{
+    const masuk = document.getElementById("attJamMasuk").value;
+    const pulang = document.getElementById("attJamPulang").value;
+    if(masuk || pulang){
+      emp.days[iso] = { code: selectedCode, masuk, pulang };
+    } else {
+      emp.days[iso] = selectedCode;
+    }
+    attCellEditorClose();
+    renderAttendanceTab();
   });
   document.getElementById("attCepClear").addEventListener("click", ()=>{
     delete emp.days[iso];
@@ -2686,13 +2728,17 @@ function renderAttendanceTab(){
       const iso = attIso(__attYear,__attMonth,d);
       const weekend = attIsWeekend(__attYear,__attMonth,d);
       const hol = isHoliday(iso);
-      const explicit = emp.days[iso];
+      const rawVal = emp.days[iso];
+      const explicit = attDayCode(rawVal);
+      const hrs = attDayHours(rawVal);
       const code = explicit || ((weekend || hol) ? null : "H"); // default: hari kerja Hadir, akhir pekan/libur nasional = Libur (kosong)
       const wd = weekdayLabels[d-1];
       if(code){
         const color = STATUS_CODE_COLOR[code];
         const isDefault = !explicit; // Hadir bawaan (belum diklik manual)
-        tbody += `<td class="daycell editable-cell att-day-cell" data-id="${emp.id}" data-iso="${iso}" data-wd="${wd}" style="background:${color};${isDefault?'opacity:0.55;':''}" title="${emp.nama} — ${STATUS_CODE_LABEL[code]}${isDefault?' (default)':''}">${code}</td>`;
+        const jamTip = (hrs.masuk||hrs.pulang) ? ` — ${hrs.masuk||'?'}–${hrs.pulang||'?'}` : "";
+        const jamBadge = (hrs.masuk||hrs.pulang) ? `<span class="att-jam-badge">&#128337;</span>` : "";
+        tbody += `<td class="daycell editable-cell att-day-cell" data-id="${emp.id}" data-iso="${iso}" data-wd="${wd}" style="background:${color};${isDefault?'opacity:0.55;':''}" title="${emp.nama} — ${STATUS_CODE_LABEL[code]}${isDefault?' (default)':''}${jamTip}">${code}${jamBadge}</td>`;
       } else {
         const tip = hol ? `${emp.nama} — Libur (${hol.name})` : `${emp.nama} — Libur`;
         tbody += `<td class="daycell empty editable-cell att-day-cell att-weekend-off${hol?' att-holiday-off':''}" data-id="${emp.id}" data-iso="${iso}" data-wd="${wd}" title="${tip}">&middot;</td>`;
@@ -2763,6 +2809,49 @@ function renderAttendanceTab(){
     </tr>`;
   }).join("");
 }
+
+// -------- unduh Excel: detail harian per karyawan (status + jam masuk/pulang) untuk bulan yang sedang dibuka --------
+function downloadAttendanceXlsx(){
+  const employees = DATA.attendance.employees;
+  const nd = attDaysInMonth(__attYear, __attMonth);
+  const rows = [["Tanggal","Hari","Nama","Nopeg","Peran","Status","Jam Masuk","Jam Pulang","Keterangan hari"]];
+  for(let d=1; d<=nd; d++){
+    const iso = attIso(__attYear,__attMonth,d);
+    const wd = WD_ID[new Date(__attYear,__attMonth-1,d).getDay()];
+    const hol = isHoliday(iso);
+    employees.forEach(emp=>{
+      const rawVal = emp.days[iso];
+      const code = attDayCode(rawVal) || attEffectiveCode(emp, __attYear, __attMonth, d) || "";
+      const hrs = attDayHours(rawVal);
+      rows.push([iso, wd, emp.nama, emp.nopeg||"", emp.peran||"", STATUS_CODE_LABEL[code]||(code||"Libur"), hrs.masuk||"", hrs.pulang||"", hol?hol.name:""]);
+    });
+  }
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws["!cols"] = [{wch:12},{wch:6},{wch:22},{wch:12},{wch:14},{wch:10},{wch:10},{wch:10},{wch:26}];
+  XLSX.utils.book_append_sheet(wb, ws, "Kehadiran Harian");
+
+  // sheet ringkasan per karyawan
+  const summaryRows = [["Nama","Nopeg","Peran","Hadir","Izin","Sakit","Training","Alpa","Lembur","% Hadir"]];
+  employees.forEach(emp=>{
+    const c = { H:0,I:0,S:0,T:0,A:0,L:0 };
+    let workdays = 0;
+    for(let d=1; d<=nd; d++){
+      const iso = attIso(__attYear,__attMonth,d);
+      if(!attIsWeekend(__attYear,__attMonth,d) && !isHoliday(iso)) workdays++;
+      const code = attEffectiveCode(emp, __attYear, __attMonth, d);
+      if(code && c.hasOwnProperty(code)) c[code]++;
+    }
+    const pct = workdays ? Math.round(c.H/workdays*100) : 0;
+    summaryRows.push([emp.nama, emp.nopeg||"", emp.peran||"", c.H, c.I, c.S, c.T, c.A, c.L, pct+"%"]);
+  });
+  const wsSum = XLSX.utils.aoa_to_sheet(summaryRows);
+  wsSum["!cols"] = [{wch:22},{wch:12},{wch:14},{wch:8},{wch:8},{wch:8},{wch:10},{wch:8},{wch:8},{wch:8}];
+  XLSX.utils.book_append_sheet(wb, wsSum, "Ringkasan");
+
+  XLSX.writeFile(wb, `Kehadiran_${attMonthLabel(__attYear,__attMonth).replace(" ","_")}.xlsx`);
+}
+document.getElementById("attDownloadXlsxBtn").addEventListener("click", downloadAttendanceXlsx);
 
 document.getElementById("attAddEmployeeBtn").addEventListener("click", attAddEmployee);
 populateAttMonthJump();
