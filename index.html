@@ -350,6 +350,7 @@ window.FIREBASE_CONFIG = {
         </div>
         <div class="chart-wrap"><canvas id="statusDonut"></canvas></div>
         <div class="legend-row" id="statusLegend"></div>
+        <p id="statusDonutHint" class="mono" style="font-size:10.5px;color:var(--text-muted);margin:6px 0 0;display:none;">&#128070; Klik salah satu status (di donut atau daftar warna) untuk lihat job order-nya.</p>
       </div>
       <div class="panel">
         <div class="panel-head">
@@ -427,13 +428,15 @@ window.FIREBASE_CONFIG = {
           <label for="monthJump">Bulan</label>
           <select id="monthJump"></select>
           <button class="btn" id="monthNext">&rarr;</button>
+          <button class="btn" id="calTwoMonthBtn" style="border-color:var(--amber);color:var(--amber);">&#128198; Tampilkan 2 bulan</button>
           <button class="btn" id="filterJobOrderBtn" style="border-color:var(--cyan);color:var(--cyan);">&#128269; Filter job order</button>
           <button class="btn" id="calFullscreenBtn" style="border-color:var(--purple);color:var(--purple);">&#9974; Layar penuh</button>
           <button class="btn" id="saveTimelineBtn" style="border-color:var(--green);color:var(--green);">&#128190; Simpan perubahan</button>
         </div>
       </div>
       <p style="font-size:11px;color:var(--text-muted);font-family:'IBM Plex Mono',monospace;margin:-4px 0 6px;">Klik sel tanggal untuk mengubah manpower/lembur, atau ubah tanggal Start/Finish job order pada tab Distribusi Pengerjaan &mdash; timeline ini akan otomatis mengikuti. Gunakan <b>Filter job order</b> untuk memilih job order yang ditampilkan, dan tombol &#9650;&#9660; di samping nama job order untuk mengubah urutan prioritas. Klik <b>Layar penuh</b> agar mudah dilihat manajemen, dan <b>Simpan perubahan</b> agar tanggal, urutan &amp; nilai yang diubah tersimpan di browser ini.</p>
-      <p id="timelineFilterNote" class="mono" style="font-size:11px;color:var(--cyan);margin:0 0 10px;"></p>
+      <p id="timelineFilterNote" class="mono" style="font-size:11px;color:var(--cyan);margin:0 0 4px;"></p>
+      <p id="twoMonthNote" class="mono" style="font-size:11px;color:var(--amber);margin:0 0 10px;display:none;"></p>
       <p id="timelineSaveStatus" class="mono" style="font-size:11px;color:var(--text-muted);margin:0 0 10px;"></p>
       <div class="cal-scroll" id="calScroll">
         <table class="cal cal-fixed" id="calTable"></table>
@@ -485,6 +488,7 @@ window.FIREBASE_CONFIG = {
         </div>
       </div>
       <div class="chart-wrap"><canvas id="rekapChart"></canvas></div>
+      <p id="rekapChartNote" class="mono" style="font-size:11px;color:var(--text-muted);margin:6px 0 0;display:none;">Catatan: belum ada data Plan tersimpan untuk rentang ini, jadi garis Plan (biru) rata di 0. Isi Plan lewat sel kalender di tab Kalender Timeline.</p>
     </div>
     <div class="panel">
       <div class="panel-head">
@@ -977,14 +981,78 @@ function statusDonutRender(){
     data: { labels, datasets: [{ data: values, backgroundColor: colors, borderColor:"#FFFFFF", borderWidth:2 }] },
     options: {
       responsive:true, maintainAspectRatio:false, cutout:"68%",
+      onClick: (evt, elements)=>{
+        if(elements.length){ showStatusJobList(labels[elements[0].index]); }
+      },
       plugins: { legend:{display:false}, tooltip:{callbacks:{label:(item)=> item.label+": "+item.raw+" job ("+(item.raw/DATA.total_jobs*100).toFixed(0)+"%)"}} }
     }
   });
   document.getElementById("statusLegend").innerHTML = labels.map(k=>
-    `<span class="legend-item"><span class="swatch" style="background:${DATA.status_colors[k]}"></span>${k} — ${sc[k]}</span>`
+    `<span class="legend-item status-legend-click" data-status="${k}" style="cursor:pointer;" title="Klik untuk lihat daftar job order ${k}"><span class="swatch" style="background:${DATA.status_colors[k]}"></span>${k} — ${sc[k]} (${(sc[k]/DATA.total_jobs*100).toFixed(0)}%)</span>`
   ).join("");
+  document.querySelectorAll(".status-legend-click").forEach(el=>{
+    el.addEventListener("click", ()=> showStatusJobList(el.dataset.status));
+  });
+  const hintEl = document.getElementById("statusDonutHint");
+  if(hintEl) hintEl.style.display = "block";
+}
+
+// Klik status (di donut atau legend) -> tampilkan daftar job order dengan status itu.
+function showStatusJobList(status){
+  const jobs = DATA.all_products.filter(p=>p.status===status);
+  const color = DATA.status_colors[status] || "#8FA0B3";
+  const backdrop = document.createElement("div");
+  backdrop.id = "cellEditorBackdrop";
+  backdrop.className = "cell-editor-backdrop";
+  backdrop.innerHTML = `
+    <div class="cell-editor-pop" style="max-width:420px;text-align:left;">
+      <div class="cep-title" style="color:${color};">${status} &middot; ${jobs.length} job order</div>
+      <div class="cep-sub">Klik nama job order untuk lompat ke Distribusi Pengerjaan.</div>
+      <div style="max-height:340px;overflow-y:auto;margin:12px 0;">
+        ${jobs.length ? jobs.map(p=>`
+          <div class="status-job-row" data-desc="${p.desc.replace(/"/g,'&quot;')}" style="padding:9px 4px;border-bottom:1px solid var(--border);cursor:pointer;">
+            <div style="font-weight:700;font-family:'Space Grotesk',sans-serif;font-size:13px;">${p.desc}</div>
+            <div style="font-size:10.5px;color:var(--text-muted);margin-top:2px;">${p.cat} &middot; ${p.tad?p.tad+" org/hari":"-"} &middot; ${p.start?p.start+" s/d "+p.end:(p.target||"TBD")}</div>
+          </div>`).join("") : `<div style="color:var(--text-muted);font-size:12.5px;padding:10px 0;">Tidak ada job order dengan status ini.</div>`}
+      </div>
+      <div class="cep-actions"><button type="button" class="btn" id="statusJobClose">Tutup</button></div>
+    </div>`;
+  document.body.appendChild(backdrop);
+  backdrop.addEventListener("click", (ev)=>{ if(ev.target===backdrop) backdrop.remove(); });
+  document.getElementById("statusJobClose").addEventListener("click", ()=> backdrop.remove());
+  backdrop.querySelectorAll(".status-job-row").forEach(row=>{
+    row.addEventListener("click", ()=>{
+      backdrop.remove();
+      document.querySelector('[data-view="distribusi"]')?.click();
+      setTimeout(()=>{
+        const search = document.getElementById("searchBox");
+        if(search){ search.value = row.dataset.desc; search.dispatchEvent(new Event("input")); search.scrollIntoView({behavior:"smooth", block:"center"}); }
+      }, 150);
+    });
+  });
 }
 statusDonutRender();
+
+// Plugin custom (tanpa dependency luar) untuk menuliskan nominal + persentase langsung di ujung setiap bar horizontal.
+const barValueLabelPlugin = {
+  id: "barValueLabelPlugin",
+  afterDatasetsDraw(chart){
+    const {ctx} = chart;
+    const meta = chart.getDatasetMeta(0);
+    const total = chart.data.datasets[0].data.reduce((a,b)=>a+b,0) || 1;
+    ctx.save();
+    ctx.font = "700 11px 'IBM Plex Mono', monospace";
+    ctx.fillStyle = "#122240";
+    ctx.textBaseline = "middle";
+    meta.data.forEach((bar,i)=>{
+      const val = chart.data.datasets[0].data[i];
+      const pct = (val/total*100).toFixed(0);
+      ctx.textAlign = "left";
+      ctx.fillText(`${val} (${pct}%)`, bar.x + 6, bar.y);
+    });
+    ctx.restore();
+  }
+};
 
 let catBarChart = null;
 function catBarRender(){
@@ -999,12 +1067,14 @@ function catBarRender(){
     },
     options: {
       indexAxis:"y", responsive:true, maintainAspectRatio:false,
+      layout:{ padding:{ right: 56 } },
       plugins:{legend:{display:false}, tooltip:{callbacks:{label:(item)=>item.raw+" job order"}}},
       scales:{
         x:{ticks:{color:"#54637A",font:{family:"IBM Plex Mono",size:10}},grid:{color:"#E1E8F0"},beginAtZero:true},
         y:{ticks:{color:"#122240",font:{family:"Space Grotesk",size:11}},grid:{display:false}}
       }
-    }
+    },
+    plugins:[barValueLabelPlugin]
   });
 }
 catBarRender();
@@ -1494,7 +1564,7 @@ function decimalToTime(dec){
   return String(h).padStart(2,"0")+":"+String(m).padStart(2,"0");
 }
 const WORK_HOUR_SETTINGS = {
-  jamMasuk: "07:30", istirahatMulai: "11:30", istirahatSelesai: "13:00", jamPulang: "16:30",
+  jamMasuk: "07:30", istirahatMulai: "12:00", istirahatSelesai: "13:30", jamPulang: "16:30",
   lemburMulai: "16:30", lemburSelesai: "20:30", istirahatLemburJam: 1,
   maksOrangPerSesi: 14,
 };
@@ -1549,7 +1619,7 @@ function cellHasOvertime(dayObj){
 
 // -------- work-hour settings modal --------
 const DEFAULT_WORK_HOUR_SETTINGS = {
-  jamMasuk: "07:30", istirahatMulai: "11:30", istirahatSelesai: "13:00", jamPulang: "16:30",
+  jamMasuk: "07:30", istirahatMulai: "12:00", istirahatSelesai: "13:30", jamPulang: "16:30",
   lemburMulai: "16:30", lemburSelesai: "20:30", istirahatLemburJam: 1,
   maksOrangPerSesi: 14,
 };
@@ -1720,6 +1790,13 @@ function buildCalendar(){
   renderCalendarMonth();
 }
 
+let __calTwoMonth = false;
+document.getElementById("calTwoMonthBtn").addEventListener("click", ()=>{
+  __calTwoMonth = !__calTwoMonth;
+  const btn = document.getElementById("calTwoMonthBtn");
+  btn.innerHTML = __calTwoMonth ? "&#128198; Tampilkan 1 bulan" : "&#128198; Tampilkan 2 bulan";
+  renderCalendarMonth();
+});
 function setupCalSwipe(){
   const el = document.getElementById("calScroll");
   if(el.__swipeBound) return;
@@ -1745,15 +1822,24 @@ function setupCalSwipe(){
 }
 
 function renderCalendarMonth(){
+ try{
   const monthSpans = __calMonthSpans;
   const m = monthSpans[__calMonthIdx];
-  const monthDays = m.days;
+  const m2 = (__calTwoMonth && __calMonthIdx+1 < monthSpans.length) ? monthSpans[__calMonthIdx+1] : null;
+  const monthDays = m2 ? m.days.concat(m2.days) : m.days;
+  const noteEl = document.getElementById("twoMonthNote");
+  if(noteEl){
+    if(m2){ noteEl.style.display = "block"; noteEl.textContent = `Menampilkan ${m.label} + ${m2.label} tergabung — geser tabel ke kanan untuk lihat bulan kedua.`; }
+    else { noteEl.style.display = "none"; }
+  }
   const products = getVisibleOrderedProducts();
   const MONTH_BANDS = ["#3A5F8A","#5F5FA0","#8A5FA0","#A05F7E","#A0745F","#8A8A5F"];
   const bandColor = MONTH_BANDS[__calMonthIdx % MONTH_BANDS.length];
+  const bandColor2 = MONTH_BANDS[(__calMonthIdx+1) % MONTH_BANDS.length];
 
   let thead = "<thead><tr><th class='desc' rowspan='3'>Job order</th>";
-  thead += `<th class="month" colspan="${monthDays.length}" style="background:linear-gradient(180deg,${bandColor},${bandColor}CC)">${m.label}</th>`;
+  thead += `<th class="month" colspan="${m.days.length}" style="background:linear-gradient(180deg,${bandColor},${bandColor}CC)">${m.label}</th>`;
+  if(m2) thead += `<th class="month" colspan="${m2.days.length}" style="background:linear-gradient(180deg,${bandColor2},${bandColor2}CC)">${m2.label}</th>`;
   thead += "</tr><tr>";
   const __cap = attWorkforceCapacity();
   const __dailyTotalByIso = {};
@@ -1843,6 +1929,11 @@ function renderCalendarMonth(){
     btn.addEventListener("click", (e)=>{ e.stopPropagation(); moveTimelineProduct(btn.dataset.desc, +btn.dataset.move); });
   });
   stickyizeCalHeader();
+ } catch(err){
+  console.error("Gagal render Kalender Timeline:", err);
+  const el = document.getElementById("calTable");
+  if(el) el.innerHTML = `<caption style="caption-side:top;color:var(--danger);font-family:'IBM Plex Mono',monospace;font-size:12px;padding:14px;text-align:left;">Gagal menampilkan kalender: ${(err&&err.message)||err}. Coba klik "Tampilkan 1 bulan" lalu buka lagi, atau screenshot pesan ini untuk dilaporkan.</caption>`;
+ }
 }
 
 // -------- freeze (stick) the 3-row header — Bulan / Tanggal / Hari — while scrolling vertically --------
@@ -2253,7 +2344,12 @@ function headcountChartRender(){
           callbacks: {
             title:(items)=> items[0].label,
             label:(item)=> item.dataset.label+": "+item.parsed.y+" orang",
-            footer:(items)=> "Total: "+items.reduce((a,i)=>a+i.parsed.y,0)+" orang"
+            footer:(items)=>{
+              const total = items.reduce((a,i)=>a+i.parsed.y,0);
+              const cap = attWorkforceCapacity();
+              if(total > cap) return [`Total: ${total} org-hari diminta`, `(dialokasikan parsial dari ${cap} orang tetap)`];
+              return "Total: "+total+" orang";
+            }
           }
         }
       },
@@ -3043,17 +3139,19 @@ function drawRekapChart(){
   const labels = filteredTotals.map(d=>d.date);
   const actualValues = filteredTotals.map(d=>d.total);
   const planValues = filteredTotals.map(d=>planValueFor(d.date));
+  const hasPlanData = planValues.some(v=>v>0);
   if(chartInstance) chartInstance.destroy();
   chartInstance = new Chart(ctx, {
-    type: "line",
     data: { labels, datasets: [
       {
-        label: "Actual", data: actualValues, borderColor: "#F5A623",
-        backgroundColor: "rgba(245,166,35,0.12)", fill: true, pointRadius: 0, borderWidth: 1.5, tension: 0.15,
+        type: "bar", label: "Actual", data: actualValues,
+        backgroundColor: "rgba(245,166,35,0.55)", borderColor:"#F5A623", borderWidth:1, borderRadius:3,
+        order: 2, barPercentage:0.7, categoryPercentage:0.8,
       },
       {
-        label: "Plan", data: planValues, borderColor: "#5AC8FA",
-        backgroundColor: "transparent", borderDash: [5,4], fill: false, pointRadius: 0, borderWidth: 1.5, tension: 0.15,
+        type: "line", label: "Plan", data: planValues, borderColor: "#1F7AE0",
+        backgroundColor: "#1F7AE0", fill: false, pointRadius: 2.5, pointBackgroundColor:"#1F7AE0",
+        borderWidth: 2.5, tension: 0.15, order: 1,
       }
     ]},
     options: {
@@ -3061,7 +3159,14 @@ function drawRekapChart(){
       plugins: {
         legend: { display:true, labels:{ color:"#8FA0B3", font:{family:"IBM Plex Mono", size:10.5}, boxWidth:14 } },
         tooltip: { callbacks: {
-          title: (items)=> items[0].label, label: (item)=> item.dataset.label+": "+item.parsed.y+" orang"
+          title: (items)=> items[0].label,
+          label: (item)=> item.dataset.label+": "+item.parsed.y+" orang",
+          afterBody: (items)=>{
+            const a = items.find(i=>i.dataset.label==="Actual");
+            const p = items.find(i=>i.dataset.label==="Plan");
+            if(a && p){ const diff = a.parsed.y - p.parsed.y; return `Selisih: ${diff>0?"+":""}${diff} orang`; }
+            return "";
+          }
         }}
       },
       scales: {
@@ -3070,6 +3175,8 @@ function drawRekapChart(){
       }
     }
   });
+  const note = document.getElementById("rekapChartNote");
+  if(note) note.style.display = hasPlanData ? "none" : "block";
 }
 
 function renderRekapTable(){
