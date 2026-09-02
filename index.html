@@ -55,6 +55,8 @@ main{padding:22px 28px 60px;max-width:1500px;margin:0 auto;}
 .stat-row.minimized .stat-sub{display:none;}
 .stat-row.minimized .stat-label{font-size:9px;}
 .stat-card{background:var(--bg-panel);border:1px solid var(--border);border-radius:10px;padding:14px 16px;position:relative;overflow:hidden;}
+.stat-card-clickable{transition:transform .12s ease, box-shadow .12s ease;}
+.stat-card-clickable:hover{transform:translateY(-2px);box-shadow:0 4px 14px rgba(20,30,50,0.12);border-color:var(--accent-color);}
 .stat-card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent-color,var(--amber));}
 .stat-label{font-size:10.5px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.06em;font-family:'IBM Plex Mono',monospace;}
 .stat-value{font-size:25px;font-weight:600;font-family:'IBM Plex Mono',monospace;margin-top:6px;color:var(--text-primary);}
@@ -107,7 +109,11 @@ table.cal td.daycell:not(.empty):not(.weekend):hover{transform:scale(1.22);filte
 table.cal td.weekend{background:repeating-linear-gradient(135deg, rgba(229,72,77,0.55) 0px, rgba(229,72,77,0.55) 5px, rgba(229,72,77,0.35) 5px, rgba(229,72,77,0.35) 10px);border-radius:5px;}
 table.cal th.weekend-h{background:linear-gradient(180deg,#E5484D,#B8383D);color:#fff;font-weight:700;}
 table.cal th.holiday-h{background:linear-gradient(180deg,#F5A623,#C9820F);color:#fff;font-weight:700;}
+table.cal th.daycount-h{padding:2px 0;height:20px;}
+.daycount-badge{display:inline-block;min-width:18px;padding:1px 5px;border-radius:9px;background:var(--amber);color:#fff;font-size:10px;font-weight:700;font-family:'IBM Plex Mono',monospace;cursor:pointer;}
+.daycount-badge:hover{filter:brightness(1.15);}
 table.cal td.empty{background:#E4EAF2;border-radius:5px;}
+table.cal td.att-future-off{background:repeating-linear-gradient(135deg, #E9EDF3 0px, #E9EDF3 5px, #DCE2EA 5px, #DCE2EA 10px);cursor:pointer;}
 table.cal tr:hover td.desc{background:var(--bg-panel-alt);}
 table.cal td.editable-cell{cursor:pointer;}
 table.cal td.editable-cell.overtime{box-shadow:inset 0 0 0 3px #FF1A1A, 0 0 10px 2px rgba(255,26,26,0.85);border:3px solid #FF1A1A !important;position:relative;}
@@ -379,7 +385,7 @@ window.FIREBASE_CONFIG = {
       </div>
       <div class="table-wrap">
         <table class="data-table">
-          <thead><tr><th>Job order</th><th>Kategori</th><th>Status</th><th>Man-days</th><th>Periode</th><th>Progres</th></tr></thead>
+          <thead><tr><th>Job order</th><th>Kategori</th><th>Status</th><th>Man-days</th><th>Man-hour</th><th>Periode</th><th>Progres</th></tr></thead>
           <tbody id="topBody"></tbody>
         </table>
       </div>
@@ -477,20 +483,21 @@ window.FIREBASE_CONFIG = {
       <div class="panel-head">
         <div>
           <div class="eyebrow">Grafik</div>
-          <h2>Total manpower dibutuhkan per hari</h2>
+          <h2>Total manhour dibutuhkan per hari</h2>
         </div>
         <div class="controls">
           <label for="startDate">Dari</label>
           <input type="date" id="startDate">
           <label for="endDate">Sampai</label>
           <input type="date" id="endDate">
-          <button class="btn" id="resetRange">Reset</button>
+          <button class="btn" id="resetRange" title="Kembali ke rentang default: 1 bulan lalu s/d akhir bulan berjalan">Reset</button>
+          <button class="btn" id="showAllRange" title="Tampilkan seluruh rentang proyek">Semua</button>
         </div>
       </div>
       <div class="chart-wrap"><canvas id="rekapChart"></canvas></div>
       <p id="rekapChartNote" class="mono" style="font-size:11px;color:var(--text-muted);margin:6px 0 0;display:none;">Catatan: belum ada data Plan tersimpan untuk rentang ini, jadi garis Plan (biru) rata di 0. Isi Plan lewat sel kalender di tab Kalender Timeline.</p>
     </div>
-    <div class="panel">
+    <div class="panel" id="rekapTablePanel">
       <div class="panel-head">
         <div>
           <div class="eyebrow">Rincian</div>
@@ -503,7 +510,7 @@ window.FIREBASE_CONFIG = {
       <p style="font-size:11px;color:var(--text-muted);font-family:'IBM Plex Mono',monospace;margin:-4px 0 10px;">File Excel berisi 3 sheet untuk rentang tanggal yang sedang dipilih (Dari/Sampai di atas): <b>Harian</b> (breakdown manpower &amp; jam kerja Plan vs Actual per hari), <b>Mingguan</b>, dan <b>Bulanan</b>.</p>
       <div class="table-wrap">
         <table class="data-table">
-          <thead><tr><th>Tanggal</th><th>Hari</th><th>Plan</th><th>Actual</th><th>Selisih</th><th>Relatif</th></tr></thead>
+          <thead><tr><th>Tanggal</th><th>Hari</th><th>Plan (jam)</th><th>Actual (jam)</th><th>Selisih (jam)</th><th>Relatif</th></tr></thead>
           <tbody id="rekapBody"></tbody>
         </table>
       </div>
@@ -669,6 +676,86 @@ async function saveDataToCloud(dataObj){
 // SETELAH data awal berhasil diambil dari cloud/cache/bawaan)
 // ======================================================================
 function initDashboardApp(DATA, __dataSource){
+const SESSION_KEYS = ["pagi","siang","lembur"]; // dipakai cellHours/cellIsEmpty — dideklarasikan di awal supaya aman dipanggil sejak render pertama
+const __calOvertime = {}; // legacy, unused after session-based rewrite (kept to avoid ref errors)
+
+// -------- work-hour rules: Pagi / Siang / Lembur, tiap sesi punya Plan & Aktual sendiri --------
+const SHIFT_OPTIONS = {
+  pagi:   { label: "Pagi",   hours: 4.0, overtime:false },
+  siang:  { label: "Siang",  hours: 3.5, overtime:false },
+  lembur: { label: "Lembur", hours: 3.0, overtime:true  },
+};
+function shiftHoursFor(session){ return (SHIFT_OPTIONS[session] || SHIFT_OPTIONS.pagi).hours; }
+function isOvertimeSession(session){ return !!(SHIFT_OPTIONS[session] || SHIFT_OPTIONS.pagi).overtime; }
+
+function timeToDecimal(hhmm){ const [h,m] = hhmm.split(":").map(Number); return h + (m||0)/60; }
+function decimalToTime(dec){
+  const h = Math.floor(dec); const m = Math.round((dec-h)*60);
+  return String(h).padStart(2,"0")+":"+String(m).padStart(2,"0");
+}
+const WORK_HOUR_SETTINGS = {
+  jamMasuk: "07:30", istirahatMulai: "12:00", istirahatSelesai: "13:30", jamPulang: "16:30",
+  lemburMulai: "16:30", lemburSelesai: "20:30", istirahatLemburJam: 1,
+  maksOrangPerSesi: 14,
+};
+function recalcShiftOptionsFromSettings(){
+  const s = WORK_HOUR_SETTINGS;
+  const pagiHours = Math.max(0, timeToDecimal(s.istirahatMulai) - timeToDecimal(s.jamMasuk));
+  const siangHours = Math.max(0, timeToDecimal(s.jamPulang) - timeToDecimal(s.istirahatSelesai));
+  const lemburHours = Math.max(0, timeToDecimal(s.lemburSelesai) - timeToDecimal(s.lemburMulai) - (Number(s.istirahatLemburJam)||0));
+  SHIFT_OPTIONS.pagi.hours = Math.round(pagiHours*10)/10;
+  SHIFT_OPTIONS.pagi.label = `Pagi (${s.jamMasuk}–${s.istirahatMulai})`;
+  SHIFT_OPTIONS.siang.hours = Math.round(siangHours*10)/10;
+  SHIFT_OPTIONS.siang.label = `Siang (${s.istirahatSelesai}–${s.jamPulang})`;
+  SHIFT_OPTIONS.lembur.hours = Math.round(lemburHours*10)/10;
+  SHIFT_OPTIONS.lembur.label = `Lembur (${s.lemburMulai}–${s.lemburSelesai})`;
+}
+recalcShiftOptionsFromSettings();
+function fullDayHours(){ return SHIFT_OPTIONS.pagi.hours + SHIFT_OPTIONS.siang.hours; }
+
+// -------- per-cell session data helpers --------
+// each day cell is stored as: { pagi:{plan,actual}, siang:{plan,actual}, lembur:{plan,actual} }
+function emptySessionDay(){
+  return { pagi:{plan:0,actual:0}, siang:{plan:0,actual:0}, lembur:{plan:0,actual:0,jam:null} };
+}
+function migrateFlatValueToSession(v){
+  // legacy flat number (from Excel import) = full-day headcount, assumed executed as planned
+  const d = emptySessionDay();
+  d.pagi.plan = v; d.pagi.actual = v;
+  d.siang.plan = v; d.siang.actual = v;
+  return d;
+}
+// dipakai saat MEMBUAT/MENGATUR ULANG jadwal job order (regenerateProductSchedule): isi Plan saja,
+// Actual dibiarkan 0 supaya diisi manual per hari lewat sel kalender seiring pekerjaan benar-benar berjalan —
+// kalau Actual ikut ke-auto-isi sejak awal, grafik Actual jadi seolah pekerjaan hari-hari mendatang sudah selesai.
+function planOnlySessionFromFlat(v){
+  const d = emptySessionDay();
+  d.pagi.plan = v;
+  d.siang.plan = v;
+  return d;
+}
+function cellIsEmpty(dayObj){
+  if(!dayObj) return true;
+  return SESSION_KEYS.every(k=> !dayObj[k] || (dayObj[k].plan===0 && dayObj[k].actual===0));
+}
+function cellHeadcount(dayObj, field){
+  if(!dayObj) return 0;
+  // Lembur SENGAJA tidak diikutkan di sini: karyawan tetap 16 orang yang sama, lembur cuma tambahan
+  // JAM kerja mereka di hari itu (dihitung lewat cellHours), bukan tambahan kepala/manpower baru.
+  // Jadi headcount = orang yang bekerja sesi Pagi/Siang saja, tidak dijumlah dengan sesi Lembur.
+  return Math.max(dayObj.pagi[field]||0, dayObj.siang[field]||0);
+}
+function cellHours(dayObj, field){
+  if(!dayObj) return 0;
+  return SESSION_KEYS.reduce((sum,k)=>{
+    const hrs = (k==="lembur" && dayObj.lembur && dayObj.lembur.jam!=null) ? dayObj.lembur.jam : shiftHoursFor(k);
+    return sum + (dayObj[k][field]||0)*hrs;
+  }, 0);
+}
+function cellHasOvertime(dayObj){
+  return !!dayObj && (dayObj.lembur.plan>0 || dayObj.lembur.actual>0);
+}
+
 
 // ======================================================================
 // KALENDER HARI LIBUR — diinisialisasi paling awal supaya tersedia untuk Kalender Timeline,
@@ -707,6 +794,118 @@ if(!Array.isArray(DATA.holidays)){
   ];
 }
 function isHoliday(iso){ return (DATA.holidays||[]).find(h=>h.date===iso) || null; }
+// Job order mana saja yang punya jadwal (plan/actual > 0) pada tanggal tsb — dipakai badge jumlah
+// job per hari di header Kalender Timeline, supaya bisa langsung diklik tanpa geser ke bawah.
+function activeJobsForIso(iso){
+  return (DATA.calendar_products||[]).filter(p=> p.days && p.days[iso] && !cellIsEmpty(p.days[iso]));
+}
+// Filter Timeline supaya cuma menampilkan 1 job order tertentu (dipanggil dari popup "job aktif hari ini").
+// Memakai mekanisme filter yang sama dengan tombol "Filter job order" di atas, jadi tersimpan &
+// tombolnya otomatis menunjukkan status "1/N" seperti biasa.
+function filterTimelineToOnly(desc){
+  __timelineHiddenDescs = new Set(DATA.calendar_products.map(p=>p.desc).filter(d=> d!==desc));
+  saveTimelineFilter();
+  updateTimelineFilterNote();
+  renderCalendarMonth();
+}
+function clearTimelineFilter(){
+  __timelineHiddenDescs = new Set();
+  saveTimelineFilter();
+  updateTimelineFilterNote();
+  renderCalendarMonth();
+}
+function openDayJobsPopup(iso){
+  closeCellEditor();
+  const jobs = activeJobsForIso(iso);
+  const dt = parseDate(iso);
+  const hol = isHoliday(iso);
+  const backdrop = document.createElement("div");
+  backdrop.id = "cellEditorBackdrop";
+  backdrop.className = "cell-editor-backdrop";
+  backdrop.innerHTML = `
+    <div class="cell-editor-pop" style="max-width:320px;">
+      <div class="cep-title">${WD_ID[dt.getDay()]}, ${iso}</div>
+      <div class="cep-sub">${jobs.length} job order aktif${hol?` &middot; ${hol.name}`:""}${jobs.length?" &middot; centang lalu \"Tampilkan di Timeline\", atau klik nama untuk filter langsung":""}</div>
+      ${jobs.length>1?`<label class="cep-check-row" style="margin:6px 0 2px;font-weight:700;">
+        <input type="checkbox" id="dayJobsCheckAll"> Pilih semua
+      </label>`:""}
+      <div style="max-height:280px;overflow-y:auto;">
+        ${jobs.length ? jobs.map(p=>{
+          const d = p.days[iso];
+          const org = cellHeadcount(d,"actual");
+          const jam = cellHours(d,"actual");
+          const color = DATA.status_colors[p.status] || "#8FA0B3";
+          const descEsc = p.desc.replace(/"/g,"&quot;");
+          return `<div class="day-jobs-item" style="display:flex;align-items:flex-start;gap:8px;padding:8px 4px;border-bottom:1px solid var(--border);border-radius:6px;" onmouseover="this.style.background='var(--bg-panel-alt)'" onmouseout="this.style.background='transparent'">
+            <input type="checkbox" class="day-jobs-check" data-desc="${descEsc}" style="margin-top:3px;flex-shrink:0;cursor:pointer;width:15px;height:15px;">
+            <div class="day-jobs-item-label" data-desc="${descEsc}" style="cursor:pointer;flex:1;min-width:0;">
+              <div style="font-size:11.5px;font-weight:700;color:var(--text-primary);">${p.desc} <span style="color:var(--cyan);font-weight:400;font-size:9.5px;">&#128269;</span></div>
+              <div style="font-size:9.5px;color:var(--text-muted);font-family:'IBM Plex Mono',monospace;margin-top:2px;">
+                <span class="cat-pill" style="background:${color}22;color:${color};border-color:${color}55;">${p.status}</span>
+                &middot; ${org} org &middot; ${jam.toLocaleString("id-ID",{maximumFractionDigits:1})} jam
+              </div>
+            </div>
+          </div>`;
+        }).join("") : `<div class="cep-summary-note">Tidak ada job order terjadwal di tanggal ini.</div>`}
+      </div>
+      <div class="cep-actions" style="margin-top:12px;flex-wrap:wrap;">
+        ${jobs.length?`<button type="button" class="btn cep-save" id="dayJobsGoTimeline" disabled style="opacity:.5;">Tampilkan di Timeline</button>`:""}
+        ${__timelineHiddenDescs.size>0?`<button type="button" class="btn" id="dayJobsResetFilter" style="border-color:var(--cyan);color:var(--cyan);">Tampilkan semua job</button>`:""}
+        <button type="button" class="btn" id="dayJobsClose">Tutup</button>
+      </div>
+    </div>`;
+  document.body.appendChild(backdrop);
+  backdrop.addEventListener("click", (ev)=>{ if(ev.target===backdrop) closeCellEditor(); });
+  document.getElementById("dayJobsClose").addEventListener("click", closeCellEditor);
+
+  // klik nama/keterangan job = filter langsung ke job itu saja (perilaku lama, tetap dipertahankan)
+  document.querySelectorAll(".day-jobs-item-label").forEach(label=>{
+    label.addEventListener("click", ()=>{
+      filterTimelineToOnly(label.dataset.desc);
+      closeCellEditor();
+    });
+  });
+
+  // checkbox = pilih satu atau lebih job order, lalu tekan "Tampilkan di Timeline" untuk filter sekaligus & lompat ke Kalender Timeline
+  const goBtn = document.getElementById("dayJobsGoTimeline");
+  const checkAllBoxRef = document.getElementById("dayJobsCheckAll");
+  function syncGoBtn(){
+    if(!goBtn) return;
+    const boxes = document.querySelectorAll(".day-jobs-check");
+    const anyChecked = !!document.querySelector(".day-jobs-check:checked");
+    goBtn.disabled = !anyChecked;
+    goBtn.style.opacity = anyChecked ? "1" : ".5";
+    if(checkAllBoxRef) checkAllBoxRef.checked = boxes.length>0 && Array.from(boxes).every(b=>b.checked);
+  }
+  document.querySelectorAll(".day-jobs-check").forEach(chk=>{
+    chk.addEventListener("click", (ev)=> ev.stopPropagation());
+    chk.addEventListener("change", syncGoBtn);
+  });
+  if(checkAllBoxRef){
+    checkAllBoxRef.addEventListener("change", ()=>{
+      document.querySelectorAll(".day-jobs-check").forEach(chk=>{ chk.checked = checkAllBoxRef.checked; });
+      syncGoBtn();
+    });
+  }
+  if(goBtn){
+    goBtn.addEventListener("click", ()=>{
+      const checked = Array.from(document.querySelectorAll(".day-jobs-check:checked")).map(c=>c.dataset.desc);
+      if(!checked.length) return;
+      const checkedSet = new Set(checked);
+      __timelineHiddenDescs = new Set(DATA.calendar_products.map(p=>p.desc).filter(d=> !checkedSet.has(d)));
+      saveTimelineFilter();
+      updateTimelineFilterNote();
+      renderCalendarMonth();
+      closeCellEditor();
+      switchView("kalender");
+      const cal = document.getElementById("calScroll") || document.getElementById("calendarScroll");
+      if(cal) cal.scrollIntoView({behavior:"smooth", block:"start"});
+    });
+  }
+
+  const resetBtn = document.getElementById("dayJobsResetFilter");
+  if(resetBtn) resetBtn.addEventListener("click", ()=>{ clearTimelineFilter(); closeCellEditor(); });
+}
 
 // -------- pengaturan header (logo & judul) — default sesuai tampilan awal, bisa diedit admin login --------
 if(!DATA.header_settings){
@@ -938,14 +1137,17 @@ function targetCellHTML(target, idx){
 
 // ---------- Tabs ----------
 let chartsDrawn = {};
+function switchView(viewName){
+  const btn = document.querySelector(`nav.tabs button[data-view="${viewName}"]`);
+  if(!btn) return;
+  document.querySelectorAll("nav.tabs button").forEach(b=>b.classList.remove("active"));
+  btn.classList.add("active");
+  document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
+  document.getElementById("view-"+viewName).classList.add("active");
+  if(viewName==="rekap" && !chartsDrawn.rekap){ drawRekapChart(); chartsDrawn.rekap = true; }
+}
 document.querySelectorAll("nav.tabs button").forEach(btn=>{
-  btn.addEventListener("click", ()=>{
-    document.querySelectorAll("nav.tabs button").forEach(b=>b.classList.remove("active"));
-    btn.classList.add("active");
-    document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
-    document.getElementById("view-"+btn.dataset.view).classList.add("active");
-    if(btn.dataset.view==="rekap" && !chartsDrawn.rekap){ drawRekapChart(); chartsDrawn.rekap = true; }
-  });
+  btn.addEventListener("click", ()=> switchView(btn.dataset.view));
 });
 
 // ================= DISTRIBUSI PENGERJAAN =================
@@ -1120,15 +1322,22 @@ function tadBarRender(){
 }
 tadBarRender();
 
+function jobHoursByDesc(desc){
+  const cp = (DATA.calendar_products||[]).find(c=>c.desc===desc);
+  if(!cp || !cp.days) return 0;
+  return Object.keys(cp.days).reduce((a,iso)=> a + cellHours(cp.days[iso],"actual"), 0);
+}
 function topTableRender(){
   document.getElementById("topBody").innerHTML = DATA.top_products.map(p=>{
     const period = p.start && p.end ? `${p.start} &rarr; ${p.end}` : "-";
     const pctDisp = (p.pct===null||p.pct===undefined) ? "-" : p.pct+"%";
+    const hrs = p.hours!=null ? p.hours : jobHoursByDesc(p.desc);
     return `<tr>
       <td>${p.desc}</td>
       <td><span class="cat-pill">${p.cat}</span></td>
       <td>${statusBadge(p.status)}</td>
       <td>${p.mandays}</td>
+      <td class="mono">${hrs.toLocaleString("id-ID",{maximumFractionDigits:1})} j</td>
       <td class="mono" style="font-size:10.5px;">${period}</td>
       <td><div class="bar-cell"><div class="bar-track"><div class="bar-fill" style="width:${p.pct||0}%"></div></div><span>${pctDisp}</span></div></td>
     </tr>`;
@@ -1137,7 +1346,8 @@ function topTableRender(){
 topTableRender();
 
 // -------- shared: regenerate a product's day-by-day schedule from start/finish + flat MP --------
-// mp given here is treated as a full-day headcount: fills Pagi+Siang plan&actual (Lembur left at 0)
+// mp given here diisikan sebagai Plan headcount saja untuk Pagi+Siang (Lembur & Actual dibiarkan 0) —
+// Actual diisi belakangan per hari lewat sel kalender begitu pekerjaan benar-benar berjalan.
 function regenerateProductSchedule(desc, newStart, newEnd, mp, includeWeekend){
   let cp = DATA.calendar_products.find(c=>c.desc===desc);
   if(!cp){
@@ -1149,7 +1359,7 @@ function regenerateProductSchedule(desc, newStart, newEnd, mp, includeWeekend){
   let cur = parseDate(newStart);
   const endD = parseDate(newEnd);
   while(cur <= endD){
-    if(includeWeekend || !isWeekend(cur)) newDays[fmt(cur)] = migrateFlatValueToSession(mp);
+    if(includeWeekend || !isWeekend(cur)) newDays[fmt(cur)] = planOnlySessionFromFlat(mp);
     cur.setDate(cur.getDate()+1);
   }
   cp.days = newDays;
@@ -1546,77 +1756,6 @@ function moveTimelineProduct(desc, direction){
   arr[realIdxB] = tmp;
   renderCalendarMonth();
 }
-const __calOvertime = {}; // legacy, unused after session-based rewrite (kept to avoid ref errors)
-
-// -------- work-hour rules: Pagi / Siang / Lembur, tiap sesi punya Plan & Aktual sendiri --------
-const SESSION_KEYS = ["pagi","siang","lembur"];
-const SHIFT_OPTIONS = {
-  pagi:   { label: "Pagi",   hours: 4.0, overtime:false },
-  siang:  { label: "Siang",  hours: 3.5, overtime:false },
-  lembur: { label: "Lembur", hours: 3.0, overtime:true  },
-};
-function shiftHoursFor(session){ return (SHIFT_OPTIONS[session] || SHIFT_OPTIONS.pagi).hours; }
-function isOvertimeSession(session){ return !!(SHIFT_OPTIONS[session] || SHIFT_OPTIONS.pagi).overtime; }
-
-function timeToDecimal(hhmm){ const [h,m] = hhmm.split(":").map(Number); return h + (m||0)/60; }
-function decimalToTime(dec){
-  const h = Math.floor(dec); const m = Math.round((dec-h)*60);
-  return String(h).padStart(2,"0")+":"+String(m).padStart(2,"0");
-}
-const WORK_HOUR_SETTINGS = {
-  jamMasuk: "07:30", istirahatMulai: "12:00", istirahatSelesai: "13:30", jamPulang: "16:30",
-  lemburMulai: "16:30", lemburSelesai: "20:30", istirahatLemburJam: 1,
-  maksOrangPerSesi: 14,
-};
-function recalcShiftOptionsFromSettings(){
-  const s = WORK_HOUR_SETTINGS;
-  const pagiHours = Math.max(0, timeToDecimal(s.istirahatMulai) - timeToDecimal(s.jamMasuk));
-  const siangHours = Math.max(0, timeToDecimal(s.jamPulang) - timeToDecimal(s.istirahatSelesai));
-  const lemburHours = Math.max(0, timeToDecimal(s.lemburSelesai) - timeToDecimal(s.lemburMulai) - (Number(s.istirahatLemburJam)||0));
-  SHIFT_OPTIONS.pagi.hours = Math.round(pagiHours*10)/10;
-  SHIFT_OPTIONS.pagi.label = `Pagi (${s.jamMasuk}–${s.istirahatMulai})`;
-  SHIFT_OPTIONS.siang.hours = Math.round(siangHours*10)/10;
-  SHIFT_OPTIONS.siang.label = `Siang (${s.istirahatSelesai}–${s.jamPulang})`;
-  SHIFT_OPTIONS.lembur.hours = Math.round(lemburHours*10)/10;
-  SHIFT_OPTIONS.lembur.label = `Lembur (${s.lemburMulai}–${s.lemburSelesai})`;
-}
-recalcShiftOptionsFromSettings();
-function fullDayHours(){ return SHIFT_OPTIONS.pagi.hours + SHIFT_OPTIONS.siang.hours; }
-
-// -------- per-cell session data helpers --------
-// each day cell is stored as: { pagi:{plan,actual}, siang:{plan,actual}, lembur:{plan,actual} }
-function emptySessionDay(){
-  return { pagi:{plan:0,actual:0}, siang:{plan:0,actual:0}, lembur:{plan:0,actual:0,jam:null} };
-}
-function migrateFlatValueToSession(v){
-  // legacy flat number (from Excel import) = full-day headcount, assumed executed as planned
-  const d = emptySessionDay();
-  d.pagi.plan = v; d.pagi.actual = v;
-  d.siang.plan = v; d.siang.actual = v;
-  return d;
-}
-function cellIsEmpty(dayObj){
-  if(!dayObj) return true;
-  return SESSION_KEYS.every(k=> !dayObj[k] || (dayObj[k].plan===0 && dayObj[k].actual===0));
-}
-function cellHeadcount(dayObj, field){
-  if(!dayObj) return 0;
-  // Lembur SENGAJA tidak diikutkan di sini: karyawan tetap 16 orang yang sama, lembur cuma tambahan
-  // JAM kerja mereka di hari itu (dihitung lewat cellHours), bukan tambahan kepala/manpower baru.
-  // Jadi headcount = orang yang bekerja sesi Pagi/Siang saja, tidak dijumlah dengan sesi Lembur.
-  return Math.max(dayObj.pagi[field]||0, dayObj.siang[field]||0);
-}
-function cellHours(dayObj, field){
-  if(!dayObj) return 0;
-  return SESSION_KEYS.reduce((sum,k)=>{
-    const hrs = (k==="lembur" && dayObj.lembur && dayObj.lembur.jam!=null) ? dayObj.lembur.jam : shiftHoursFor(k);
-    return sum + (dayObj[k][field]||0)*hrs;
-  }, 0);
-}
-function cellHasOvertime(dayObj){
-  return !!dayObj && (dayObj.lembur.plan>0 || dayObj.lembur.actual>0);
-}
-
 // -------- work-hour settings modal --------
 const DEFAULT_WORK_HOUR_SETTINGS = {
   jamMasuk: "07:30", istirahatMulai: "12:00", istirahatSelesai: "13:30", jamPulang: "16:30",
@@ -1837,7 +1976,7 @@ function renderCalendarMonth(){
   const bandColor = MONTH_BANDS[__calMonthIdx % MONTH_BANDS.length];
   const bandColor2 = MONTH_BANDS[(__calMonthIdx+1) % MONTH_BANDS.length];
 
-  let thead = "<thead><tr><th class='desc' rowspan='3'>Job order</th>";
+  let thead = "<thead><tr><th class='desc' rowspan='4'>Job order</th>";
   thead += `<th class="month" colspan="${m.days.length}" style="background:linear-gradient(180deg,${bandColor},${bandColor}CC)">${m.label}</th>`;
   if(m2) thead += `<th class="month" colspan="${m2.days.length}" style="background:linear-gradient(180deg,${bandColor2},${bandColor2}CC)">${m2.label}</th>`;
   thead += "</tr><tr>";
@@ -1858,6 +1997,14 @@ function renderCalendarMonth(){
     const hol = isHoliday(iso);
     const cls = hol ? "holiday-h" : (isWeekend(dt)?"weekend-h":"");
     thead += `<th class="${cls}" style="${cls?'':'color:#5AC8FA'}" title="${hol?hol.name:''}">${WD_ID[dt.getDay()]}</th>`;
+  });
+  thead += "</tr><tr>";
+  monthDays.forEach(dt=>{
+    const iso = fmt(dt);
+    const hol = isHoliday(iso);
+    const cls = hol ? "holiday-h" : (isWeekend(dt)?"weekend-h":"");
+    const cnt = activeJobsForIso(iso).length;
+    thead += `<th class="${cls} daycount-h" data-iso="${iso}">${cnt?`<span class="daycount-badge" data-iso="${iso}">${cnt}</span>`:""}</th>`;
   });
   thead += "</tr></thead>";
 
@@ -1927,6 +2074,9 @@ function renderCalendarMonth(){
   });
   document.querySelectorAll(".reorder-btn").forEach(btn=>{
     btn.addEventListener("click", (e)=>{ e.stopPropagation(); moveTimelineProduct(btn.dataset.desc, +btn.dataset.move); });
+  });
+  document.querySelectorAll(".daycount-badge").forEach(badge=>{
+    badge.addEventListener("click", (e)=>{ e.stopPropagation(); openDayJobsPopup(badge.dataset.iso); });
   });
   stickyizeCalHeader();
  } catch(err){
@@ -2000,16 +2150,17 @@ function recomputeFromCalendar(){
   const today = new Date();
   scheduled.forEach(p=>{
     p.total_mandays = Object.keys(p.days).reduce((a,iso)=> a + cellHeadcount(p.days[iso],"actual"), 0);
+    p.total_hours = Object.keys(p.days).reduce((a,iso)=> a + cellHours(p.days[iso],"actual"), 0);
   });
   const topProducts = [...scheduled].sort((a,b)=>b.total_mandays-a.total_mandays).slice(0,12).map(p=>({
-    desc:p.desc, cat:p.cat, status:p.status, mandays:p.total_mandays, start:p.start, end:p.end,
+    desc:p.desc, cat:p.cat, status:p.status, mandays:p.total_mandays, hours:p.total_hours, start:p.start, end:p.end,
     pct: pctComplete(p, today)
   }));
 
-  // mirror mandays/start/end/pct back into all_products by matching description
+  // mirror mandays/jam/start/end/pct back into all_products by matching description
   DATA.all_products.forEach(ap=>{
     const match = scheduled.find(p=>p.desc === ap.desc);
-    if(match){ ap.mandays = match.total_mandays; ap.start = match.start; ap.end = match.end; ap.pct = pctComplete(match, today); }
+    if(match){ ap.mandays = match.total_mandays; ap.hours = match.total_hours; ap.start = match.start; ap.end = match.end; ap.pct = pctComplete(match, today); }
   });
 
   DATA.date_min = dateMin;
@@ -2058,6 +2209,7 @@ function openScheduleEditor(pidx){
         <input type="number" id="schedMP" min="0" value="${avgMP}" inputmode="numeric">
         <button type="button" id="schedPlus">&plus;</button>
       </div>
+      <div class="cep-summary-note" style="margin:8px 0 4px;">Angka ini mengisi baris <b>Plan</b> saja untuk seluruh rentang. Baris <b>Actual</b> sengaja dibiarkan 0 &mdash; isi belakangan per hari lewat sel kalender begitu pekerjaan itu benar-benar berjalan, supaya grafik Actual tidak seolah pekerjaan hari-hari mendatang sudah selesai.</div>
       <label class="cep-check-row"><input type="checkbox" id="schedIncludeWeekend"> Sertakan akhir pekan (Sab/Min) dalam rentang baru</label>
       <div class="cep-actions" style="margin-top:14px;">
         <button type="button" class="btn" id="schedCancel">Batal</button>
@@ -2426,11 +2578,12 @@ function parseTimelineWorkbook(wb){
       }
     }
     const total_mandays = Object.values(dayMap).reduce((a,b)=>a+b,0);
+    const total_hours = total_mandays * fullDayHours(); // asumsi: data flat Excel = headcount hari penuh (Pagi+Siang), belum ada rincian sesi/lembur
     const isoKeys = Object.keys(dayMap).sort();
 
     products.push({
       desc, cat: categorizeJOB(desc), status, tad, target, remarks,
-      days: dayMap, total_mandays,
+      days: dayMap, total_mandays, total_hours,
       start: isoKeys.length ? isoKeys[0] : null,
       end: isoKeys.length ? isoKeys[isoKeys.length-1] : null,
     });
@@ -2487,11 +2640,11 @@ function rebuildDashboardFromProducts(products){
 
   const today = new Date();
   const topProducts = [...scheduled].sort((a,b)=>b.total_mandays-a.total_mandays).slice(0,12).map(p=>({
-    desc:p.desc, cat:p.cat, status:p.status, mandays:p.total_mandays, start:p.start, end:p.end, pct: pctComplete(p, today)
+    desc:p.desc, cat:p.cat, status:p.status, mandays:p.total_mandays, hours:p.total_hours, start:p.start, end:p.end, pct: pctComplete(p, today)
   }));
   const allProducts = products.map(p=>({
     desc:p.desc, cat:p.cat, status:p.status, tad:p.tad, target:p.target, remarks:p.remarks,
-    pct: pctComplete(p, today), mandays:p.total_mandays, start:p.start, end:p.end
+    pct: pctComplete(p, today), mandays:p.total_mandays, hours:p.total_hours, start:p.start, end:p.end
   }));
   const calendarProducts = scheduled.map(p=>({ desc:p.desc, cat:p.cat, status:p.status, days:{...p.sessionDays}, start:p.start, end:p.end }));
 
@@ -2536,8 +2689,8 @@ function rebuildDashboardFromProducts(products){
   buildCalendar();
   calStatsRender();
   headcountChartRender();
-  document.getElementById("startDate").value = DATA.date_min || "";
-  document.getElementById("endDate").value = DATA.date_max || "";
+  document.getElementById("startDate").value = defaultRekapRange().startIso;
+  document.getElementById("endDate").value = defaultRekapRange().endIso;
   applyRange();
 }
 
@@ -2611,7 +2764,9 @@ if(DATA.attendance.employees.length === 0){
 let __attGenId = 1;
 function attNewId(){ return "att_" + (Date.now().toString(36)) + "_" + (__attGenId++); }
 
-const today0 = DATA.today ? parseDate(DATA.today) : new Date();
+// Bulan yang tampil pertama kali & rentang tahun di dropdown kehadiran memakai tanggal RIIL sekarang
+// (bukan DATA.today) supaya langsung menampilkan bulan yang sedang berjalan untuk pengisian harian.
+const today0 = new Date();
 let __attYear = today0.getFullYear();
 let __attMonth = today0.getMonth() + 1; // 1-12
 
@@ -2632,13 +2787,41 @@ function attIsWeekend(y,m,d){ const g = new Date(y,m-1,d).getDay(); return g===0
 function attDayCode(val){ return val ? (typeof val === "object" ? val.code : val) : null; }
 function attDayHours(val){ return (val && typeof val === "object") ? {masuk: val.masuk||"", pulang: val.pulang||""} : {masuk:"", pulang:""}; }
 
+// Kehadiran diisi terus-menerus seiring waktu berjalan (bukan snapshot sekali export), jadi "hari ini" di sini
+// SELALU memakai tanggal riil sekarang (jam komputer/browser) -- bukan DATA.today yang cuma snapshot data jadwal proyek.
+function attRealTodayIso(){ return fmt(new Date()); }
+
 function attEffectiveCode(emp, y, m, d){
   const iso = attIso(y,m,d);
   const explicit = attDayCode(emp.days[iso]);
   if(explicit) return explicit;
   if(isHoliday(iso)) return null;
-  return attIsWeekend(y,m,d) ? null : "H";
+  if(attIsWeekend(y,m,d)) return null;
+  if(iso > attRealTodayIso()) return null; // belum terjadi -> jangan default Hadir, biarkan abu-abu sampai diisi manual
+  return "H";
 }
+function attIsFuture(y,m,d){
+  const iso = attIso(y,m,d);
+  return iso > attRealTodayIso();
+}
+// jumlah hari kerja yang SUDAH terjadi (<= hari ini) dalam bulan y-m — dipakai sebagai penyebut % kehadiran
+// supaya bulan yang sedang berjalan/masa depan tidak langsung dianggap 100% hadir.
+function attElapsedWorkdayCount(y,m,nd){
+  const todayIso = attRealTodayIso();
+  let count = 0;
+  for(let d=1; d<=nd; d++){
+    const iso = attIso(y,m,d);
+    if(iso > todayIso) continue;
+    if(!attIsWeekend(y,m,d) && !isHoliday(iso)) count++;
+  }
+  return count;
+}
+function attIsElapsedIso(iso){
+  return iso <= attRealTodayIso();
+}
+// L (Lembur) berarti karyawan tetap datang kerja hari itu -- baik lembur di hari kerja biasa (menggantikan kode H)
+// maupun lembur di akhir pekan/hari libur -- jadi ikut dihitung sebagai "hadir" untuk rekap Excel.
+function attCountsAsPresent(code){ return code==="H" || code==="L"; }
 
 function populateAttMonthJump(){
   const sel = document.getElementById("attMonthJump");
@@ -2691,13 +2874,14 @@ function attOpenCellEditor(empId, iso, wdLabel){
   const weekend = attIsWeekend(yy,mm,dd);
   const hol = isHoliday(iso);
   const isOff = weekend || hol;
+  const future = !isOff && attIsFuture(yy,mm,dd);
   const rawVal = emp.days[iso];
-  const curCode = attDayCode(rawVal) || (isOff ? "" : "H"); // default tampilan: hari kerja biasa = Hadir, akhir pekan/libur nasional = kosong (libur)
+  const curCode = attDayCode(rawVal) || ((isOff || future) ? "" : "H"); // default tampilan: hari kerja yg sudah lewat = Hadir, akhir pekan/libur nasional & hari yg belum terjadi = kosong
   const curHours = attDayHours(rawVal);
   let selectedCode = curCode;
   // Lembur sekarang tersedia untuk semua hari (biasa maupun akhir pekan/libur), tidak cuma akhir pekan.
   const codes = isOff ? ["R","H","L","I","S","T","A"] : ["H","L","R","I","S","T","A"];
-  const subLabel = hol ? ` &middot; ${hol.name} (default libur)` : (weekend ? " &middot; akhir pekan (default libur)" : " &middot; default Hadir");
+  const subLabel = hol ? ` &middot; ${hol.name} (default libur)` : (weekend ? " &middot; akhir pekan (default libur)" : (future ? " &middot; belum terjadi (belum diisi)" : " &middot; default Hadir"));
   const backdrop = document.createElement("div");
   backdrop.id = "cellEditorBackdrop";
   backdrop.className = "cell-editor-backdrop";
@@ -2720,7 +2904,7 @@ function attOpenCellEditor(empId, iso, wdLabel){
       </div>
       <div class="cep-summary-note" id="attHoursNote" style="margin-bottom:8px;">Opsional &mdash; isi kalau mau catat jam aktual masuk/pulang hari ini.</div>
       <div class="cep-actions">
-        <button type="button" class="btn cep-clear" id="attCepClear">${isOff?"Kosongkan (libur)":"Kembalikan ke default (Hadir)"}</button>
+        <button type="button" class="btn cep-clear" id="attCepClear">${isOff?"Kosongkan (libur)":(future?"Kosongkan (belum diisi)":"Kembalikan ke default (Hadir)")}</button>
         <button type="button" class="btn" id="attCepCancel">Batal</button>
         <button type="button" class="btn cep-save" id="attCepSave">Simpan</button>
       </div>
@@ -2787,25 +2971,35 @@ function renderAttendanceTab(){
     const iso = attIso(__attYear,__attMonth,d);
     if(!attIsWeekend(__attYear,__attMonth,d) && !isHoliday(iso)) workdayCount++;
   }
+  const elapsedWorkdayCount = attElapsedWorkdayCount(__attYear,__attMonth,nd);
 
   // -------- stats (pakai kode EFEKTIF: hari kerja kosong = Hadir, akhir pekan kosong = libur/tidak dihitung) --------
+  // Hanya hitung hari yang SUDAH BERLALU (<= hari ini) untuk statistik % -- supaya tidak >100% gara-gara ada
+  // entri eksplisit di tanggal yang belum terjadi, dan konsisten dengan elapsedWorkdayCount sebagai penyebut.
   const totals = { H:0,I:0,S:0,A:0,T:0,L:0 };
   employees.forEach(e=>{
     for(let d=1; d<=nd; d++){
+      const iso = attIso(__attYear,__attMonth,d);
+      if(!attIsElapsedIso(iso)) continue;
       const c = attEffectiveCode(e, __attYear, __attMonth, d);
       if(c && totals.hasOwnProperty(c)) totals[c]++;
     }
   });
-  const totalSlots = employees.length * workdayCount;
+  const totalSlots = employees.length * elapsedWorkdayCount;
   const avgPct = totalSlots ? Math.round(totals.H/totalSlots*100) : 0;
   let best = null, bestH = -1;
   employees.forEach(e=>{
-    let h=0; for(let d=1; d<=nd; d++){ if(attEffectiveCode(e,__attYear,__attMonth,d)==="H") h++; }
+    let h=0;
+    for(let d=1; d<=nd; d++){
+      const iso = attIso(__attYear,__attMonth,d);
+      if(!attIsElapsedIso(iso)) continue;
+      if(attEffectiveCode(e,__attYear,__attMonth,d)==="H") h++;
+    }
     if(h>bestH){ bestH=h; best=e; }
   });
   document.getElementById("absen-stats").innerHTML = [
     {label:"Karyawan", value: employees.length, sub: monthLabel, color:"var(--cyan)"},
-    {label:"Rata-rata kehadiran", value: avgPct+"%", sub:workdayCount+" hari kerja (di luar akhir pekan &amp; libur)", color:"var(--green)"},
+    {label:"Rata-rata kehadiran", value: elapsedWorkdayCount ? avgPct+"%" : "-", sub:elapsedWorkdayCount+" dari "+workdayCount+" hari kerja sudah berjalan", color:"var(--green)"},
     {label:"Kehadiran terbaik", value: best ? String(best.nama).split(" ")[0] : "-", sub: best ? bestH+" hari hadir" : "-", color:"var(--amber)"},
     {label:"Total lembur", value: totals.L, sub:"kerja di akhir pekan/libur", color:"var(--amber)"},
   ].map(s=>`
@@ -2824,10 +3018,11 @@ function renderAttendanceTab(){
       const iso = attIso(__attYear,__attMonth,d);
       const weekend = attIsWeekend(__attYear,__attMonth,d);
       const hol = isHoliday(iso);
+      const future = !weekend && !hol && attIsFuture(__attYear,__attMonth,d);
       const rawVal = emp.days[iso];
       const explicit = attDayCode(rawVal);
       const hrs = attDayHours(rawVal);
-      const code = explicit || ((weekend || hol) ? null : "H"); // default: hari kerja Hadir, akhir pekan/libur nasional = Libur (kosong)
+      const code = explicit || ((weekend || hol || future) ? null : "H"); // default: hari kerja yg sudah lewat = Hadir, akhir pekan/libur = Libur, hari kerja yang belum terjadi = kosong (abu-abu, belum diisi)
       const wd = weekdayLabels[d-1];
       if(code){
         const color = STATUS_CODE_COLOR[code];
@@ -2835,6 +3030,9 @@ function renderAttendanceTab(){
         const jamTip = (hrs.masuk||hrs.pulang) ? ` — ${hrs.masuk||'?'}–${hrs.pulang||'?'}` : "";
         const jamBadge = (hrs.masuk||hrs.pulang) ? `<span class="att-jam-badge">&#128337;</span>` : "";
         tbody += `<td class="daycell editable-cell att-day-cell" data-id="${emp.id}" data-iso="${iso}" data-wd="${wd}" style="background:${color};${isDefault?'opacity:0.55;':''}" title="${emp.nama} — ${STATUS_CODE_LABEL[code]}${isDefault?' (default)':''}${jamTip}">${code}${jamBadge}</td>`;
+      } else if(future){
+        const tip = `${emp.nama} — belum terjadi, klik untuk isi kehadiran`;
+        tbody += `<td class="daycell empty editable-cell att-day-cell att-future-off" data-id="${emp.id}" data-iso="${iso}" data-wd="${wd}" title="${tip}">&nbsp;</td>`;
       } else {
         const tip = hol ? `${emp.nama} — Libur (${hol.name})` : `${emp.nama} — Libur`;
         tbody += `<td class="daycell empty editable-cell att-day-cell att-weekend-off${hol?' att-holiday-off':''}" data-id="${emp.id}" data-iso="${iso}" data-wd="${wd}" title="${tip}">&middot;</td>`;
@@ -2847,6 +3045,7 @@ function renderAttendanceTab(){
   document.getElementById("absenGridLegend").innerHTML = Object.keys(STATUS_CODE_COLOR).map(k=>
     `<span class="legend-item"><span class="swatch" style="background:${STATUS_CODE_COLOR[k]}"></span>${k} = ${STATUS_CODE_LABEL[k]}</span>`
   ).join("") + `<span class="legend-item"><span class="swatch" style="background:var(--bg-panel-alt);border:1px solid var(--border);"></span>&middot; = Libur (akhir pekan/nasional, default)</span>` +
+    `<span class="legend-item"><span class="swatch" style="background:repeating-linear-gradient(135deg, #E9EDF3 0px, #E9EDF3 3px, #DCE2EA 3px, #DCE2EA 6px);border:1px solid var(--border);"></span>Abu-abu bergaris = Belum terjadi (klik untuk isi)</span>` +
     `<span class="legend-item" style="opacity:0.7;">Warna pudar = Hadir bawaan (belum diklik manual)</span>`;
 
   document.querySelectorAll(".att-day-cell").forEach(td=>{
@@ -2896,8 +3095,13 @@ function renderAttendanceTab(){
   // -------- rekap per karyawan --------
   document.getElementById("absenBody").innerHTML = employees.map(e=>{
     const c = { H:0,I:0,S:0,T:0,A:0,L:0 };
-    for(let d=1; d<=nd; d++){ const code = attEffectiveCode(e,__attYear,__attMonth,d); if(code && c.hasOwnProperty(code)) c[code]++; }
-    const pct = workdayCount ? Math.round(c.H/workdayCount*100) : 0;
+    for(let d=1; d<=nd; d++){
+      const iso = attIso(__attYear,__attMonth,d);
+      if(!attIsElapsedIso(iso)) continue;
+      const code = attEffectiveCode(e,__attYear,__attMonth,d);
+      if(code && c.hasOwnProperty(code)) c[code]++;
+    }
+    const pct = elapsedWorkdayCount ? Math.round(c.H/elapsedWorkdayCount*100) : 0;
     return `<tr>
       <td>${e.nama}</td><td><span class="cat-pill">${e.peran||""}</span></td>
       <td>${c.H}</td><td>${c.I}</td><td>${c.S}</td><td>${c.T}</td><td>${c.A}</td>
@@ -2928,22 +3132,33 @@ function downloadAttendanceXlsx(){
   XLSX.utils.book_append_sheet(wb, ws, "Kehadiran Harian");
 
   // sheet ringkasan per karyawan
-  const summaryRows = [["Nama","Nopeg","Peran","Hadir","Izin","Sakit","Training","Alpa","Lembur","% Hadir"]];
+  // Catatan: kolom "Hadir" di sini sudah TERMASUK hari Lembur (baik lembur di hari kerja biasa yang menggantikan
+  // kode H, maupun lembur di akhir pekan/hari libur) -- karena kalau lembur, artinya karyawan tetap datang kerja.
+  // Kolom "Lembur" tetap ditampilkan terpisah supaya rinciannya kelihatan.
+  const summaryRows = [["Nama","Nopeg","Peran","Hadir (termasuk lembur)","Izin","Sakit","Training","Alpa","Lembur","% Hadir (hari kerja)"]];
   employees.forEach(emp=>{
     const c = { H:0,I:0,S:0,T:0,A:0,L:0 };
     let workdays = 0;
+    let hadirWorkday = 0;   // hari kerja biasa dengan status Hadir ATAU Lembur
+    let lemburOffDay = 0;   // lembur yang terjadi di akhir pekan/hari libur (di luar hari kerja normal)
     for(let d=1; d<=nd; d++){
       const iso = attIso(__attYear,__attMonth,d);
-      if(!attIsWeekend(__attYear,__attMonth,d) && !isHoliday(iso)) workdays++;
+      if(!attIsElapsedIso(iso)) continue;
+      const isWorkday = !attIsWeekend(__attYear,__attMonth,d) && !isHoliday(iso);
+      if(isWorkday) workdays++;
       const code = attEffectiveCode(emp, __attYear, __attMonth, d);
       if(code && c.hasOwnProperty(code)) c[code]++;
+      if(isWorkday && attCountsAsPresent(code)) hadirWorkday++;
+      else if(!isWorkday && code==="L") lemburOffDay++;
     }
-    const pct = workdays ? Math.round(c.H/workdays*100) : 0;
-    summaryRows.push([emp.nama, emp.nopeg||"", emp.peran||"", c.H, c.I, c.S, c.T, c.A, c.L, pct+"%"]);
+    const hadirTermasukLembur = hadirWorkday + lemburOffDay;
+    const pct = workdays ? Math.round(hadirWorkday/workdays*100) : 0;
+    summaryRows.push([emp.nama, emp.nopeg||"", emp.peran||"", hadirTermasukLembur, c.I, c.S, c.T, c.A, c.L, pct+"%"]);
   });
   const wsSum = XLSX.utils.aoa_to_sheet(summaryRows);
-  wsSum["!cols"] = [{wch:22},{wch:12},{wch:14},{wch:8},{wch:8},{wch:8},{wch:10},{wch:8},{wch:8},{wch:8}];
+  wsSum["!cols"] = [{wch:22},{wch:12},{wch:14},{wch:20},{wch:8},{wch:8},{wch:10},{wch:8},{wch:8},{wch:18}];
   XLSX.utils.book_append_sheet(wb, wsSum, "Ringkasan");
+
 
   XLSX.writeFile(wb, `Kehadiran_${attMonthLabel(__attYear,__attMonth).replace(" ","_")}.xlsx`);
 }
@@ -3115,30 +3330,138 @@ function rekapStats(list){
   const hoursVariance = hoursActual - hoursPlan;
 
   const stats = [
-    {label:"Hari dalam rentang", value: list.length, sub:"hari terpilih", color:"var(--cyan)"},
-    {label:"Rata-rata / hari", value: avg.toFixed(1), sub:"orang per hari (aktual)", color:"var(--amber)"},
-    {label:"Puncak", value: __displayPeakR+" org", sub: (peak.date || "-")+(__overCapR?` &middot; ${peak.total} org-hari diminta, parsial dari ${__capR} org`:""), color: __overCapR ? "var(--amber)" : "var(--green)"},
-    {label:"Total man-days (Plan)", value: totalPlan.toLocaleString("id-ID"), sub:"baseline jadwal awal", color:"var(--cyan)"},
-    {label:"Total man-days (Actual)", value: totalActual.toLocaleString("id-ID"), sub:"pada rentang ini", color:"var(--green)"},
-    {label:"Selisih Actual − Plan", value: (variance>=0?"+":"")+variance.toLocaleString("id-ID"), sub: variance>=0 ? "lebih dari rencana" : "di bawah rencana", color: variance>=0 ? "var(--danger)" : "var(--green)"},
-    {label:"Total jam kerja (Plan)", value: hoursPlan.toLocaleString("id-ID",{maximumFractionDigits:1})+" j", sub:"asumsi 07:30–16:30, istirahat 1.5j", color:"var(--cyan)"},
-    {label:"Total jam kerja (Actual)", value: hoursActual.toLocaleString("id-ID",{maximumFractionDigits:1})+" j", sub:"termasuk sesi &amp; lembur", color:"var(--green)"},
-    {label:"Selisih jam (Actual − Plan)", value: (hoursVariance>=0?"+":"")+hoursVariance.toLocaleString("id-ID",{maximumFractionDigits:1})+" j", sub: hoursVariance>=0 ? "lebih dari rencana" : "di bawah rencana", color: hoursVariance>=0 ? "var(--danger)" : "var(--green)"},
+    {label:"Hari dalam rentang", value: list.length, sub:"hari terpilih &middot; klik untuk lihat tabel harian", color:"var(--cyan)", action:{type:"scrollTable"}},
+    {label:"Rata-rata / hari", value: avg.toFixed(1), sub:"orang per hari (aktual) &middot; klik untuk lihat tabel harian", color:"var(--amber)", action:{type:"scrollTable"}},
+    {label:"Puncak", value: __displayPeakR+" org", sub: (peak.date || "-")+(__overCapR?` &middot; ${peak.total} org-hari diminta, parsial dari ${__capR} org`:"")+(peak.date?" &middot; klik untuk lihat job order hari itu":""), color: __overCapR ? "var(--amber)" : "var(--green)", action: peak.date ? {type:"peakDay", date:peak.date} : null},
+    {label:"Total man-days (Plan)", value: totalPlan.toLocaleString("id-ID"), sub:"baseline jadwal awal &middot; klik untuk rincian per job order", color:"var(--cyan)", action:{type:"jobBreakdown", unit:"org", sortKey:"plan"}},
+    {label:"Total man-days (Actual)", value: totalActual.toLocaleString("id-ID"), sub:"pada rentang ini &middot; klik untuk rincian per job order", color:"var(--green)", action:{type:"jobBreakdown", unit:"org", sortKey:"actual"}},
+    {label:"Selisih Actual − Plan", value: (variance>=0?"+":"")+variance.toLocaleString("id-ID"), sub: (variance>=0 ? "lebih dari rencana" : "di bawah rencana") + " &middot; klik untuk rincian per job order", color: variance>=0 ? "var(--danger)" : "var(--green)", action:{type:"jobBreakdown", unit:"org", sortKey:"diff"}},
+    {label:"Total jam kerja (Plan)", value: hoursPlan.toLocaleString("id-ID",{maximumFractionDigits:1})+" j", sub:"asumsi 07:30–16:30, istirahat 1.5j &middot; klik untuk rincian", color:"var(--cyan)", action:{type:"jobBreakdown", unit:"jam", sortKey:"plan"}},
+    {label:"Total jam kerja (Actual)", value: hoursActual.toLocaleString("id-ID",{maximumFractionDigits:1})+" j", sub:"termasuk sesi &amp; lembur &middot; klik untuk rincian", color:"var(--green)", action:{type:"jobBreakdown", unit:"jam", sortKey:"actual"}},
+    {label:"Selisih jam (Actual − Plan)", value: (hoursVariance>=0?"+":"")+hoursVariance.toLocaleString("id-ID",{maximumFractionDigits:1})+" j", sub: (hoursVariance>=0 ? "lebih dari rencana" : "di bawah rencana") + " &middot; klik untuk rincian per job order", color: hoursVariance>=0 ? "var(--danger)" : "var(--green)", action:{type:"jobBreakdown", unit:"jam", sortKey:"diff"}},
   ];
-  document.getElementById("rekap-stats").innerHTML = stats.map(s=>`
-    <div class="stat-card" style="--accent-color:${s.color}">
+  __rekapStatActions = stats.map(s=>s.action);
+  document.getElementById("rekap-stats").innerHTML = stats.map((s,i)=>`
+    <div class="stat-card${s.action?" stat-card-clickable":""}" style="--accent-color:${s.color}"${s.action?` data-stat-idx="${i}"`:""}>
       <div class="stat-label">${s.label}</div>
       <div class="stat-value">${s.value}</div>
       <div class="stat-sub">${s.sub}</div>
     </div>`).join("");
+  document.querySelectorAll(".stat-card-clickable").forEach(card=>{
+    card.style.cursor = "pointer";
+    card.addEventListener("click", ()=>{
+      const action = __rekapStatActions[Number(card.dataset.statIdx)];
+      if(!action) return;
+      if(action.type==="scrollTable"){
+        const panel = document.getElementById("rekapTablePanel");
+        if(panel){
+          panel.scrollIntoView({behavior:"smooth", block:"start"});
+          panel.style.transition = "box-shadow .2s ease";
+          panel.style.boxShadow = "0 0 0 3px var(--cyan)";
+          setTimeout(()=>{ panel.style.boxShadow = ""; }, 900);
+        }
+      } else if(action.type==="peakDay"){
+        openDayJobsPopup(action.date);
+      } else if(action.type==="jobBreakdown"){
+        openJobBreakdown(action.unit, action.sortKey);
+      }
+    });
+  });
+}
+let __rekapStatActions = [];
+
+// -------- rincian selisih per job order: klik kartu "Selisih" untuk lihat mana yang minus, --------
+// dan pisahkan mana yang memang sudah lewat tanggal (keterlambatan riil) vs yang belum waktunya (plan masa depan, actual wajar 0).
+function jobBreakdownForRange(startIso, endIso, unit){
+  const today = DATA.today || fmt(new Date());
+  const rows = DATA.calendar_products.map(p=>{
+    let plan=0, actual=0, planPast=0, actualPast=0;
+    Object.keys(p.days||{}).forEach(iso=>{
+      if(iso<startIso || iso>endIso) return;
+      const d = p.days[iso];
+      const pv = unit==="org" ? cellHeadcount(d,"plan") : cellHours(d,"plan");
+      const av = unit==="org" ? cellHeadcount(d,"actual") : cellHours(d,"actual");
+      plan += pv; actual += av;
+      if(iso <= today){ planPast += pv; actualPast += av; }
+    });
+    return {
+      desc:p.desc, status:p.status, start:p.start, end:p.end,
+      plan: round1(plan), actual: round1(actual), diff: round1(actual-plan),
+      diffPast: round1(actualPast-planPast),
+      notYetDue: !!(p.start && p.start > today)
+    };
+  }).filter(r=> r.plan>0 || r.actual>0);
+  rows.sort((a,b)=> a.diff - b.diff);
+  return rows;
+}
+function openJobBreakdown(unit, sortKey){
+  if(!filteredTotals.length) return;
+  closeCellEditor();
+  const startIso = filteredTotals[0].date, endIso = filteredTotals[filteredTotals.length-1].date;
+  const rows = jobBreakdownForRange(startIso, endIso, unit);
+  const unitLabel = unit==="org" ? "org-hari" : "jam";
+  const fmtN = (n)=> (n>=0?"+":"")+n.toLocaleString("id-ID",{maximumFractionDigits:1});
+
+  let titleText, subText, noteHTML;
+  if(sortKey==="diff"){
+    rows.sort((a,b)=> a.diff - b.diff); // paling minus dulu
+    const totalDiff = round1(rows.reduce((a,r)=>a+r.diff,0));
+    const totalDiffPast = round1(rows.reduce((a,r)=>a+r.diffPast,0));
+    const totalDiffFuture = round1(totalDiff - totalDiffPast);
+    titleText = `Rincian selisih Actual − Plan (${unitLabel})`;
+    subText = "diurutkan dari yang paling minus";
+    noteHTML = `<b>Sampai hari ini (${DATA.today||"-"})</b>: performa riil <strong style="color:${totalDiffPast<0?'var(--danger)':'var(--green)'}">${fmtN(totalDiffPast)} ${unitLabel}</strong> &mdash; ini yang mencerminkan keterlambatan/percepatan sebenarnya.<br>
+        <b>Belum jatuh tempo</b>: <strong style="color:var(--text-muted)">${fmtN(totalDiffFuture)} ${unitLabel}</strong> berasal dari job order yang jadwalnya masih di masa depan (Actual wajar 0 karena belum waktunya) &mdash; <u>bukan keterlambatan</u>, jangan dibaca sebagai minus beneran.`;
+  } else {
+    rows.sort((a,b)=> b[sortKey] - a[sortKey]); // terbesar dulu
+    const total = round1(rows.reduce((a,r)=>a+r[sortKey],0));
+    titleText = `Rincian Total ${sortKey==="plan"?"Plan":"Actual"} (${unitLabel})`;
+    subText = "diurutkan dari kontribusi terbesar";
+    noteHTML = `Total ${sortKey==="plan"?"Plan":"Actual"} pada rentang ini: <strong>${total.toLocaleString("id-ID",{maximumFractionDigits:1})} ${unitLabel}</strong>, terkumpul dari ${rows.length} job order di bawah.`;
+  }
+
+  const backdrop = document.createElement("div");
+  backdrop.id = "cellEditorBackdrop";
+  backdrop.className = "cell-editor-backdrop";
+  backdrop.innerHTML = `
+    <div class="cell-editor-pop" style="max-width:480px;">
+      <div class="cep-title">${titleText}</div>
+      <div class="cep-sub">${startIso} s/d ${endIso} &middot; ${subText}</div>
+      <div class="cep-summary-note" style="background:var(--bg-panel-alt);border-radius:8px;padding:10px 12px;margin:10px 0;line-height:1.6;">${noteHTML}</div>
+      <div style="max-height:320px;overflow-y:auto;">
+        ${rows.length ? rows.map(r=>{
+          const color = DATA.status_colors[r.status] || "#8FA0B3";
+          const highlightVal = sortKey==="diff" ? r.diff : r[sortKey];
+          const highlightColor = sortKey==="diff" ? (r.diff<0 ? (r.notYetDue ? "var(--text-muted)" : "var(--danger)") : "var(--green)") : "var(--text-primary)";
+          const displayVal = sortKey==="diff" ? fmtN(highlightVal) : highlightVal.toLocaleString("id-ID",{maximumFractionDigits:1});
+          return `<div style="padding:7px 4px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px;">
+            <div style="min-width:0;">
+              <div style="font-size:11.5px;font-weight:700;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.desc}</div>
+              <div style="font-size:9.5px;color:var(--text-muted);font-family:'IBM Plex Mono',monospace;margin-top:2px;">
+                <span class="cat-pill" style="background:${color}22;color:${color};border-color:${color}55;">${r.status}</span>
+                &middot; Plan ${r.plan} &middot; Actual ${r.actual}
+                ${r.notYetDue?` &middot; <span style="color:var(--amber)">belum waktunya (mulai ${r.start})</span>`:""}
+              </div>
+            </div>
+            <div class="mono" style="font-weight:700;color:${highlightColor};white-space:nowrap;">${displayVal}</div>
+          </div>`;
+        }).join("") : `<div class="cep-summary-note">Tidak ada job order pada rentang ini.</div>`}
+      </div>
+      <div class="cep-actions" style="margin-top:12px;">
+        <button type="button" class="btn" id="selisihBreakdownClose">Tutup</button>
+      </div>
+    </div>`;
+  document.body.appendChild(backdrop);
+  backdrop.addEventListener("click", (ev)=>{ if(ev.target===backdrop) closeCellEditor(); });
+  document.getElementById("selisihBreakdownClose").addEventListener("click", closeCellEditor);
 }
 
 let chartInstance = null;
 function drawRekapChart(){
   const ctx = document.getElementById("rekapChart");
   const labels = filteredTotals.map(d=>d.date);
-  const actualValues = filteredTotals.map(d=>d.total);
-  const planValues = filteredTotals.map(d=>planValueFor(d.date));
+  const actualValues = filteredTotals.map(d=> round1(dailyHoursFor(d.date).actual));
+  const planValues = filteredTotals.map(d=> round1(dailyHoursFor(d.date).plan));
   const hasPlanData = planValues.some(v=>v>0);
   if(chartInstance) chartInstance.destroy();
   chartInstance = new Chart(ctx, {
@@ -3160,18 +3483,18 @@ function drawRekapChart(){
         legend: { display:true, labels:{ color:"#8FA0B3", font:{family:"IBM Plex Mono", size:10.5}, boxWidth:14 } },
         tooltip: { callbacks: {
           title: (items)=> items[0].label,
-          label: (item)=> item.dataset.label+": "+item.parsed.y+" orang",
+          label: (item)=> item.dataset.label+": "+item.parsed.y+" jam",
           afterBody: (items)=>{
             const a = items.find(i=>i.dataset.label==="Actual");
             const p = items.find(i=>i.dataset.label==="Plan");
-            if(a && p){ const diff = a.parsed.y - p.parsed.y; return `Selisih: ${diff>0?"+":""}${diff} orang`; }
+            if(a && p){ const diff = round1(a.parsed.y - p.parsed.y); return `Selisih: ${diff>0?"+":""}${diff} jam`; }
             return "";
           }
         }}
       },
       scales: {
         x: { ticks: { color:"#54637A", maxTicksLimit: 12, font:{family:"IBM Plex Mono", size:10} }, grid:{ color:"#E1E8F0" } },
-        y: { ticks: { color:"#54637A", font:{family:"IBM Plex Mono", size:10} }, grid:{ color:"#E1E8F0" }, beginAtZero:true }
+        y: { ticks: { color:"#54637A", font:{family:"IBM Plex Mono", size:10} }, grid:{ color:"#E1E8F0" }, beginAtZero:true, title:{ display:true, text:"jam", color:"#8FA0B3", font:{family:"IBM Plex Mono", size:10.5} } }
       }
     }
   });
@@ -3180,22 +3503,37 @@ function drawRekapChart(){
 }
 
 function renderRekapTable(){
-  const maxVal = Math.max(...filteredTotals.map(d=>Math.max(d.total, planValueFor(d.date))), 1);
-  document.getElementById("rekapBody").innerHTML = filteredTotals.map(d=>{
-    const dt = parseDate(d.date);
+  const rows = filteredTotals.map(d=>{ const h = dailyHoursFor(d.date); return { date:d.date, planJam: round1(h.plan), actualJam: round1(h.actual) }; });
+  const maxVal = Math.max(...rows.map(r=>Math.max(r.actualJam, r.planJam)), 1);
+  document.getElementById("rekapBody").innerHTML = rows.map(r=>{
+    const dt = parseDate(r.date);
     const wd = WD_ID[dt.getDay()];
-    const plan = planValueFor(d.date);
-    const diff = d.total - plan;
-    const pct = (d.total/maxVal*100).toFixed(0);
+    const diff = round1(r.actualJam - r.planJam);
+    const pct = (r.actualJam/maxVal*100).toFixed(0);
     const diffColor = diff>0 ? "var(--danger)" : (diff<0 ? "var(--green)" : "var(--text-muted)");
-    return `<tr class="${d.weekend?'weekend':''}">
-      <td>${d.date}</td><td>${wd}</td><td class="mono">${plan}</td><td>${d.total}</td>
+    return `<tr>
+      <td>${r.date}</td><td>${wd}</td><td class="mono">${r.planJam}</td><td>${r.actualJam}</td>
       <td class="mono" style="color:${diffColor}">${diff>0?"+":""}${diff}</td>
       <td><div class="bar-cell"><div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div><span>${pct}%</span></div></td>
     </tr>`;
   }).join("");
 }
 
+// -------- rentang default Rekap Harian: 1 bulan lalu s/d akhir bulan berjalan, bukan seluruh rentang proyek --------
+// supaya filter Dari/Sampai tidak kepanjangan (mis. Sep berjalan -> default Agu s/d Sep saja).
+function defaultRekapRange(){
+  const t = DATA.today ? parseDate(DATA.today) : new Date();
+  const y = t.getFullYear(), m = t.getMonth();
+  let startIso = fmt(new Date(y, m-1, 1));
+  let endIso = fmt(new Date(y, m+1, 0));
+  if(DATA.date_min && startIso < DATA.date_min) startIso = DATA.date_min;
+  if(DATA.date_max && endIso > DATA.date_max) endIso = DATA.date_max;
+  if(DATA.date_min && DATA.date_max && (startIso > DATA.date_max || endIso < DATA.date_min)){
+    // rentang data tidak mencakup 2 bulan ini sama sekali -> pakai rentang penuh sebagai fallback
+    startIso = DATA.date_min; endIso = DATA.date_max;
+  }
+  return { startIso, endIso };
+}
 function applyRange(){
   const s = document.getElementById("startDate").value;
   const e = document.getElementById("endDate").value;
@@ -3280,11 +3618,17 @@ function downloadRekapManhourXlsx(){
 }
 document.getElementById("downloadRekapXlsxBtn").addEventListener("click", downloadRekapManhourXlsx);
 
-document.getElementById("startDate").value = DATA.date_min;
-document.getElementById("endDate").value = DATA.date_max;
+document.getElementById("startDate").value = defaultRekapRange().startIso;
+document.getElementById("endDate").value = defaultRekapRange().endIso;
 document.getElementById("startDate").addEventListener("change", applyRange);
 document.getElementById("endDate").addEventListener("change", applyRange);
 document.getElementById("resetRange").addEventListener("click", ()=>{
+  const r = defaultRekapRange();
+  document.getElementById("startDate").value = r.startIso;
+  document.getElementById("endDate").value = r.endIso;
+  applyRange();
+});
+document.getElementById("showAllRange").addEventListener("click", ()=>{
   document.getElementById("startDate").value = DATA.date_min;
   document.getElementById("endDate").value = DATA.date_max;
   applyRange();
